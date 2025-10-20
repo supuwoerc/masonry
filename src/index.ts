@@ -1,3 +1,3 @@
-import "./style.css";
+import Masonry from "./core/masonry";
 
-export { sum } from "./sum";
+export { Masonry };

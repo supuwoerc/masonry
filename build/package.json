@@ -41,12 +41,14 @@
     "eslint": "^9.30.1",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.1",
+    "globals": "^16.4.0",
     "husky": "^9.1.7",
     "jiti": "^2.4.2",
     "lint-staged": "^16.1.2",
     "postcss": "^8.5.6",
     "postcss-scss": "^4.0.9",
     "prettier": "^3.6.2",
+    "release-it": "^19.0.5",
     "rimraf": "^6.0.1",
     "stylelint": "^16.21.1",
     "stylelint-config-recommended": "^16.0.0",
@@ -57,8 +59,9 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.36.0",
     "vite": "^7.0.3",
-    "vitest": "^3.2.4",
-    "globals": "^16.4.0",
-    "release-it": "^19.0.5"
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@supuwoerc/masonry": "file:.yalc/@supuwoerc/masonry"
   }
 }

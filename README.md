@@ -17,4 +17,3 @@ The starter contains the following scripts:
 - `format` - format all with prettier and stylelint
 - `prepare` - script for setting up husky pre-commit hook
 - `uninstall-husky` - script for removing husky from repository
-

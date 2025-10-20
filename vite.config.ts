@@ -1,6 +1,7 @@
 /// <reference types="vitest" />
 import path from "path";
 import { defineConfig } from "vite";
+import eslint from "vite-plugin-eslint";
 import packageJson from "./package.json";
 
 const getPackageName = () => {
@@ -23,6 +24,7 @@ const fileName = {
 const formats = Object.keys(fileName) as Array<keyof typeof fileName>;
 
 export default defineConfig({
+  plugins: [eslint()],
   base: "./",
   build: {
     outDir: "./build/dist",
