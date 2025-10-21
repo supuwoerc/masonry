@@ -1,47 +1,21 @@
 /// <reference types="vitest" />
-import path from "path";
-import { defineConfig } from "vite";
-import eslint from "vite-plugin-eslint";
-import packageJson from "./package.json";
+import { resolve } from 'node:path'
+import camelCase from 'camelcase'
+import { defineConfig } from 'vite'
+import dts from 'vite-plugin-dts'
+import packageJson from './package.json'
 
-const getPackageName = () => {
-  return packageJson.name.split("/")[1];
-};
-
-const getPackageNameCamelCase = () => {
-  try {
-    return getPackageName().replace(/-./g, (char) => char[1].toUpperCase());
-  } catch {
-    throw new Error("Name property in package.json is missing.");
-  }
-};
-
-const fileName = {
-  es: `${getPackageName()}.js`,
-  iife: `${getPackageName()}.iife.js`,
-};
-
-const formats = Object.keys(fileName) as Array<keyof typeof fileName>;
+const packageName = packageJson.name.split('/').pop() || packageJson.name
 
 export default defineConfig({
-  plugins: [eslint()],
-  base: "./",
   build: {
-    outDir: "./build/dist",
     lib: {
-      entry: path.resolve(__dirname, "src/index.ts"),
-      name: getPackageNameCamelCase(),
-      formats,
-      fileName: (format) => fileName[format],
+      entry: resolve(__dirname, 'src/index.ts'),
+      formats: ['es', 'cjs', 'umd', 'iife'],
+      name: camelCase(packageName, { pascalCase: true }),
+      fileName: packageName,
     },
   },
-  test: {
-    watch: false,
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "src"),
-      "@@": path.resolve(__dirname),
-    },
-  },
-});
+  plugins: [dts({ rollupTypes: true })],
+  test: {},
+})

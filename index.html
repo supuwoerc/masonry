@@ -1,17 +1,44 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Masonry Demo</title>
+    <title>Vite App</title>
+    <style>
+      html,
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+      #canvas {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
+    <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { Masonry } from "./build/dist/Masonry";
-      console.log(Masonry);
-      new Masonry();
+      import { Masonry } from "/src/index.ts";
+      const canvas = document.getElementById("canvas");
+      const images = [
+        "https://picsum.photos/200/300",
+        "https://picsum.photos/200/300",
+      ];
+      const masonryInstance = new Masonry({
+        canvas,
+        items: images,
+        itemWidth: 200,
+        itemHeight: 300,
+        gap: 10,
+        redundancy: 1,
+        onError: (error) => console.error("Masonry error:", error),
+      });
+
+      // 销毁实例
+      // masonryInstance.destroy();
     </script>
   </body>
 </html>
