@@ -1,12 +1,19 @@
 import { isFunction } from '../utils'
 
+export interface MasonryItemStyle {
+  width: number
+  height: number
+  radius?: number
+}
 export interface MasonryOptions {
   canvas: HTMLCanvasElement
   gap?: number
   redundancy?: number
   items: Array<string>
+  style: MasonryItemStyle
   itemWidth: number
   itemHeight: number
+  onReady?: (instance: Masonry) => void
   onError?: (err: Error) => void
 }
 
@@ -23,6 +30,8 @@ export default class Masonry {
 
   #moveable = false
 
+  #disabled = false
+
   #gap = 0
 
   #images: Array<ImageWithPositionInfo> = []
@@ -33,7 +42,13 @@ export default class Masonry {
 
   #itemHeight = 0
 
+  #canvasWidth = 0
+
+  #canvasHeight = 0
+
   #resizeObserver = new ResizeObserver(() => this.resize())
+
+  onReady: ((instance: Masonry) => void) | null = null
 
   onError = (err: unknown) => console.error(err)
 
@@ -42,30 +57,30 @@ export default class Masonry {
     this.#draw(options)
   }
 
-  get canvasWidth() {
-    return this.#canvas.clientWidth
-  }
-
-  get canvasHeight() {
-    return this.#canvas.clientHeight
-  }
-
   get capacityX() {
-    return Math.ceil(this.canvasWidth / (this.#itemWidth + this.#gap))
+    return Math.ceil(this.#canvasWidth / (this.#itemWidth + this.#gap))
   }
 
   get capacityY() {
-    return Math.ceil(this.canvasHeight / (this.#itemHeight + this.#gap))
+    return Math.ceil(this.#canvasHeight / (this.#itemHeight + this.#gap))
   }
 
   get rangeWidth() {
     const width = this.#itemWidth + this.#gap
-    return this.canvasWidth + this.#redundancy * 2 * width - this.#gap
+    return this.#canvasWidth + this.#redundancy * 2 * width
   }
 
   get rangeHeight() {
     const height = this.#itemHeight + this.#gap
-    return this.canvasHeight + this.#redundancy * 2 * height - this.#gap
+    return this.#canvasHeight + this.#redundancy * 2 * height
+  }
+
+  get blockWidth() {
+    return this.#itemWidth + this.#gap
+  }
+
+  get blockHeight() {
+    return this.#itemHeight + this.#gap
   }
 
   #initConfig(options: MasonryOptions) {
@@ -98,12 +113,20 @@ export default class Masonry {
     this.#redundancy = options?.redundancy ?? 1
     this.#canvas.width = this.#canvas.clientWidth
     this.#canvas.height = this.#canvas.clientHeight
+    this.#canvasWidth = this.#canvas.clientWidth
+    this.#canvasHeight = this.#canvas.clientHeight
+    if (options.onError && isFunction(options.onError)) {
+      this.onError = options.onError
+    }
+    if (options.onReady && isFunction(options.onReady)) {
+      this.onReady = options.onReady
+    }
   }
 
-  async prepareImages(options: MasonryOptions) {
+  async #prepareImages(options: MasonryOptions) {
     try {
-      const images = await this.loadImages(options.items)
-      this.#images = this.setImagesPosition(images)
+      const images = await this.#loadImages(options.items)
+      this.#images = this.#setImagesPosition(images)
     } catch (error) {
       this.onError(error)
     }
@@ -111,23 +134,33 @@ export default class Masonry {
 
   async #draw(options: MasonryOptions) {
     try {
-      await this.prepareImages(options)
+      await this.#prepareImages(options)
       this.#render(this.#images)
       this.#bindEvent()
+      this.onReady?.(this)
     } catch (error) {
       this.onError(error)
     }
   }
 
+  enable() {
+    this.#disabled = false
+  }
+
+  disable() {
+    this.#disabled = true
+  }
+
   clear() {
-    this.#canvasContext?.clearRect(0, 0, this.canvasWidth, this.canvasHeight)
+    this.#canvasContext?.clearRect(0, 0, this.#canvasWidth, this.#canvasHeight)
   }
 
   destroy() {
-    this.#resizeObserver.disconnect()
+    this.#unbindEvent()
+    this.clear()
   }
 
-  async loadImages(items: Array<string>) {
+  async #loadImages(items: Array<string>) {
     const imagePromises = items.map((url, index) => {
       return new Promise<{ image: HTMLImageElement, index: number }>(
         (resolve, reject) => {
@@ -154,43 +187,65 @@ export default class Masonry {
     return Promise.resolve(images.map((item) => item.image))
   }
 
-  setImagesPosition(images: Array<HTMLImageElement>) {
+  #setImagesPosition(images: Array<HTMLImageElement>) {
     const rowCount = this.capacityY + 2 * this.#redundancy
     const columnCount = this.capacityX + 2 * this.#redundancy
     const result: Array<ImageWithPositionInfo> = []
+    const offsetX = this.#redundancy * this.blockWidth
+    const offsetY = this.#redundancy * this.blockHeight
     for (let i = 0; i < rowCount * columnCount; i++) {
       const column = i % columnCount
       const row = Math.floor(i / columnCount)
-      const x = column * (this.#itemWidth + this.#gap)
-      const y = row * (this.#itemHeight + this.#gap)
-      result.push({
-        image: images[i % images.length],
-        x,
-        y,
-      })
+      const x = column * this.blockWidth - offsetX
+      const y = row * this.blockHeight - offsetY
+      const image = images[i % images.length]
+      result.push({ image, x, y })
     }
     return result
   }
 
+  #mousedown() {
+    this.#moveable = true
+  }
+
+  #mouseup() {
+    this.#moveable = false
+  }
+
+  #mouseleave() {
+    this.#moveable = false
+  }
+
+  #mousemove(e: MouseEvent) {
+    if (this.#moveable && !this.#disabled) {
+      this.#move(e.movementX, e.movementY)
+    }
+  }
+
+  events = {
+    mousedown: this.#mousedown.bind(this),
+    mouseup: this.#mouseup.bind(this),
+    mouseleave: this.#mouseleave.bind(this),
+    mousemove: this.#mousemove.bind(this),
+  }
+
   #bindEvent() {
-    this.#canvas.addEventListener('mousedown', () => {
-      this.#moveable = true
-    })
-    this.#canvas.addEventListener('mouseup', () => {
-      this.#moveable = false
-    })
-    this.#canvas.addEventListener('mouseleave', () => {
-      this.#moveable = false
-    })
-    this.#canvas.addEventListener('mousemove', (e) => {
-      if (this.#moveable) {
-        this.move(e.movementX, e.movementY)
-      }
-    })
+    this.#canvas.addEventListener('mousedown', this.events.mousedown)
+    this.#canvas.addEventListener('mouseup', this.events.mouseup)
+    this.#canvas.addEventListener('mouseleave', this.events.mouseleave)
+    this.#canvas.addEventListener('mousemove', this.events.mousemove)
     this.#resizeObserver.observe(this.#canvas)
   }
 
-  move(x: number, y: number) {
+  #unbindEvent() {
+    this.#canvas.removeEventListener('mousedown', this.events.mousedown)
+    this.#canvas.removeEventListener('mouseup', this.events.mouseup)
+    this.#canvas.removeEventListener('mouseleave', this.events.mouseleave)
+    this.#canvas.removeEventListener('mousemove', this.events.mousemove)
+    this.#resizeObserver.disconnect()
+  }
+
+  #move(x: number, y: number) {
     this.clear()
     this.#images.forEach((imageInfo) => {
       imageInfo.x += x
@@ -218,13 +273,12 @@ export default class Masonry {
   }
 
   resize() {
-    const currentTransform = this.#canvasContext?.getTransform()
     this.#canvas.width = this.#canvas.clientWidth
     this.#canvas.height = this.#canvas.clientHeight
-    if (currentTransform) {
-      this.#canvasContext?.setTransform(currentTransform)
-    }
+    this.#canvasWidth = this.#canvas.clientWidth
+    this.#canvasHeight = this.#canvas.clientHeight
     if (this.#images.length > 0) {
+      this.clear()
       this.#render(this.#images)
     }
   }
