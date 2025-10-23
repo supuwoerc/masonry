@@ -30,17 +30,8 @@
       const canvas = document.getElementById("canvas");
       const images = [];
       for (let index = 0; index < 10; index++) {
-        const bgColor = Math.floor(Math.random() * 16777215)
-          .toString(16)
-          .padStart(6, "0"); // 随机背景色
-        const textColor = Math.floor(Math.random() * 16777215)
-          .toString(16)
-          .padStart(6, "0"); // 随机文字颜色
-        const text = `Image ${index + 1}`; // 图片文字
         images.push(
-          `https://dummyimage.com/200x300/${bgColor}/${textColor}.png&text=${encodeURIComponent(
-            text
-          )}`
+          `https://fastly.picsum.photos/id/94/200/300.jpg?hmac=CA7x5S3EdSeRqM9TK0RxiKTcx1R96lIncvKTjTP3beI`
         );
       }
       const masonryInstance = new Masonry({

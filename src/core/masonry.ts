@@ -8,7 +8,6 @@ export interface MasonryItemStyle {
 export interface MasonryOptions {
   canvas: HTMLCanvasElement
   gap?: number
-  redundancy?: number
   items: Array<string>
   style: MasonryItemStyle
   itemWidth: number
@@ -17,10 +16,18 @@ export interface MasonryOptions {
   onError?: (err: Error) => void
 }
 
-interface ImageWithPositionInfo {
+interface ImageInfo {
   image: HTMLImageElement
   x: number
   y: number
+  index: number
+  crossX: boolean
+  crossY: boolean
+  overflow: boolean
+}
+
+interface PatchImageInfo extends ImageInfo {
+  from: number
 }
 
 export default class Masonry {
@@ -34,9 +41,7 @@ export default class Masonry {
 
   #gap = 0
 
-  #images: Array<ImageWithPositionInfo> = []
-
-  #redundancy = 1
+  #images: Array<ImageInfo> = []
 
   #itemWidth = 0
 
@@ -57,22 +62,20 @@ export default class Masonry {
     this.#draw(options)
   }
 
-  get capacityX() {
-    return Math.ceil(this.#canvasWidth / (this.#itemWidth + this.#gap))
+  get columnCapacity() {
+    return Math.ceil(this.#canvasWidth / this.blockWidth)
   }
 
-  get capacityY() {
-    return Math.ceil(this.#canvasHeight / (this.#itemHeight + this.#gap))
+  get columnSize() {
+    return Math.floor(this.#canvasWidth / this.blockWidth)
   }
 
-  get rangeWidth() {
-    const width = this.#itemWidth + this.#gap
-    return this.#canvasWidth + this.#redundancy * 2 * width
+  get rowCapacity() {
+    return Math.ceil(this.#canvasHeight / this.blockHeight)
   }
 
-  get rangeHeight() {
-    const height = this.#itemHeight + this.#gap
-    return this.#canvasHeight + this.#redundancy * 2 * height
+  get rowSize() {
+    return Math.floor(this.#canvasHeight / this.blockHeight)
   }
 
   get blockWidth() {
@@ -96,9 +99,6 @@ export default class Masonry {
     if ((options?.gap ?? 0) < 0) {
       throw new Error('item gap must >= 0')
     }
-    if ((options?.redundancy ?? 1) < 1) {
-      throw new Error('redundancy must >= 1')
-    }
     if (!options.canvas.getContext('2d')) {
       throw new Error('2d context of canvas not supported or available')
     }
@@ -110,7 +110,6 @@ export default class Masonry {
     this.#itemWidth = options.itemWidth
     this.#itemHeight = options.itemHeight
     this.#gap = options?.gap ?? 20
-    this.#redundancy = options?.redundancy ?? 1
     this.#canvas.width = this.#canvas.clientWidth
     this.#canvas.height = this.#canvas.clientHeight
     this.#canvasWidth = this.#canvas.clientWidth
@@ -187,19 +186,42 @@ export default class Masonry {
     return Promise.resolve(images.map((item) => item.image))
   }
 
+  #getCrossX(x: number) {
+    const corssRight
+      = x < this.#canvasWidth && x + this.#itemWidth > this.#canvasWidth
+    const corssLeft = x < 0 && x > -this.#itemWidth
+    return corssRight || corssLeft
+  }
+
+  #getCrossY(y: number) {
+    const corssBottom
+      = y < this.#canvasHeight && y + this.#itemHeight > this.#canvasHeight
+    const corssTop = y < 0 && y > -this.#itemHeight
+    return corssBottom || corssTop
+  }
+
+  #getOverflow(x: number, y: number) {
+    const overflowX = x < -this.#itemWidth || x > this.#canvasWidth
+    const overflowY = y < -this.#itemHeight || y > this.#canvasHeight
+    return overflowX || overflowY
+  }
+
   #setImagesPosition(images: Array<HTMLImageElement>) {
-    const rowCount = this.capacityY + 2 * this.#redundancy
-    const columnCount = this.capacityX + 2 * this.#redundancy
-    const result: Array<ImageWithPositionInfo> = []
-    const offsetX = this.#redundancy * this.blockWidth
-    const offsetY = this.#redundancy * this.blockHeight
-    for (let i = 0; i < rowCount * columnCount; i++) {
-      const column = i % columnCount
-      const row = Math.floor(i / columnCount)
-      const x = column * this.blockWidth - offsetX
-      const y = row * this.blockHeight - offsetY
-      const image = images[i % images.length]
-      result.push({ image, x, y })
+    const result: Array<ImageInfo> = []
+    for (
+      let index = 0;
+      index < this.columnCapacity * this.rowCapacity;
+      index++
+    ) {
+      const column = index % this.columnCapacity
+      const row = Math.floor(index / this.columnCapacity)
+      const x = column * this.blockWidth
+      const y = row * this.blockHeight
+      const image = images[index % images.length]
+      const crossX = this.#getCrossX(x)
+      const crossY = this.#getCrossY(y)
+      const overflow = this.#getOverflow(x, y)
+      result.push({ image, x, y, index, crossX, crossY, overflow })
     }
     return result
   }
@@ -245,31 +267,72 @@ export default class Masonry {
     this.#resizeObserver.disconnect()
   }
 
-  #move(x: number, y: number) {
+  #move(x: number, _y: number) {
     this.clear()
-    this.#images.forEach((imageInfo) => {
-      imageInfo.x += x
-      if (imageInfo.x > this.rangeWidth - this.#itemWidth) {
-        imageInfo.x -= this.rangeWidth + this.#gap
+    const removeIndex: number[] = []
+    const patchImages: PatchImageInfo[] = []
+    const toRight = x > 0
+    const toLeft = x < 0
+    // const toBottom = y > 0;
+    // const toTop = y < 0;
+    this.#images.forEach((info, index) => {
+      info.x += x
+      // info.y += y;
+      const ox = info.x > this.#canvasWidth || info.x < -this.#itemWidth
+      const oy = info.y > this.#canvasHeight || info.y < -this.#itemHeight
+      if (ox || oy) {
+        removeIndex.push(index)
       }
-      if (imageInfo.x < -this.#itemWidth) {
-        imageInfo.x += this.rangeWidth + this.#gap
+      if (toRight && info.x + this.#itemWidth > this.#canvasWidth) {
+        patchImages.push({
+          image: info.image,
+          x: info.x - this.#canvasWidth,
+          y: info.y,
+          index: index - this.columnSize,
+          from: index,
+          crossX: this.#getCrossX(info.x - this.#canvasWidth),
+          crossY: this.#getCrossY(info.y),
+          overflow: this.#getOverflow(info.x - this.#canvasWidth, info.y),
+        })
       }
-      imageInfo.y += y
-      if (imageInfo.y > this.rangeHeight - this.#itemHeight) {
-        imageInfo.y -= this.rangeHeight + this.#gap
+      if (toLeft && info.x < 0) {
+        patchImages.push({
+          image: info.image,
+          x: this.#canvasWidth - info.x,
+          y: info.y,
+          index: index + this.columnSize,
+          from: index,
+          crossX: this.#getCrossX(this.#canvasWidth - info.x),
+          crossY: this.#getCrossY(info.y),
+          overflow: this.#getOverflow(this.#canvasWidth - info.x, info.y),
+        })
       }
-      if (imageInfo.y < -this.#itemHeight) {
-        imageInfo.y += this.rangeHeight + this.#gap
-      }
-      this.#canvasContext?.drawImage(
-        imageInfo.image,
-        imageInfo.x,
-        imageInfo.y,
-        this.#itemWidth,
-        this.#itemHeight,
-      )
+      // if (info.y + this.#itemHeight > this.#canvasHeight) {
+      //   supplement.push({
+      //     image: info.image,
+      //     x: info.x,
+      //     y: info.y - this.#canvasHeight,
+      //     index: index - this.columnCapacity * this.rowCapacity,
+      //     from: index,
+      //   });
+      // }
+      // if (info.y < 0) {
+      //   supplement.push({
+      //     image: info.image,
+      //     x: info.x,
+      //     y: this.#canvasHeight - info.y,
+      //     index: index + this.columnCapacity * this.rowCapacity,
+      //     from: index,
+      //   });
+      // }
     })
+    patchImages.sort((left, right) => left.index - right.index)
+    // console.log(patchImages);
+    // supplement.forEach((item) => {});
+    this.#images = this.#images.filter(
+      (_, index) => !removeIndex.includes(index),
+    )
+    this.#render(this.#images)
   }
 
   resize() {
@@ -283,7 +346,7 @@ export default class Masonry {
     }
   }
 
-  #render(images: Array<ImageWithPositionInfo>) {
+  #render(images: Array<ImageInfo>) {
     const w = this.#itemWidth
     const h = this.#itemHeight
     for (let index = 0; index < images.length; index++) {
