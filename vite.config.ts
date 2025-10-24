@@ -1,21 +1,52 @@
 /// <reference types="vitest" />
-import { resolve } from 'node:path'
-import camelCase from 'camelcase'
+import path from 'node:path'
 import { defineConfig } from 'vite'
-import dts from 'vite-plugin-dts'
 import packageJson from './package.json'
 
-const packageName = packageJson.name.split('/').pop() || packageJson.name
+function getPackageName() {
+  return packageJson.name
+}
+
+function getPackageNameCamelCase() {
+  return getPackageName().replace(/-./g, (char) => char[1].toUpperCase())
+}
+
+const fileName = {
+  es: `${getPackageName()}.esm.js`,
+  cjs: `${getPackageName()}.cjs`,
+  iife: `${getPackageName()}.iife.js`,
+}
+
+const formats = Object.keys(fileName) as Array<keyof typeof fileName>
 
 export default defineConfig({
+  base: './',
   build: {
+    outDir: './dist',
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
-      formats: ['es', 'cjs', 'umd', 'iife'],
-      name: camelCase(packageName, { pascalCase: true }),
-      fileName: packageName,
+      entry: path.resolve(__dirname, 'src/index.ts'),
+      name: getPackageNameCamelCase(),
+      formats,
+      fileName: (format) => fileName[format],
+    },
+    minify: 'terser',
+    terserOptions: {
+      keep_classnames: true,
+      keep_fnames: true,
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
     },
   },
-  plugins: [dts({ rollupTypes: true })],
-  test: {},
+  test: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
 })

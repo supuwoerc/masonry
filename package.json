@@ -2,6 +2,15 @@
   "name": "@supuwoerc/masonry",
   "type": "module",
   "version": "0.0.1",
+  "author": {
+    "name": "Idris",
+    "email": "supuwoerc@gmail.com",
+    "url": "https://github.com/supuwoerc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supuwoerc/masonry"
+  },
   "exports": {
     ".": {
       "import": "./dist/masonry.js",
@@ -11,7 +20,9 @@
   "main": "./dist/masonry.cjs",
   "module": "./dist/masonry.js",
   "types": "./dist/masonry.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -33,12 +44,15 @@
     "eslint": "^9.38.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
+    "terser": "^5.44.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.10",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^3.2.4"
   },
   "lint-staged": {
-    "*.ts": "pnpm run lint"
+    "*.ts": [
+      "eslint --fix"
+    ]
   }
 }

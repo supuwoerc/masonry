@@ -2,9 +2,13 @@
   "compilerOptions": {
     "target": "ESNext",
     "lib": ["ESNext", "DOM"],
-    "rootDir": "./src",
+    "baseUrl": ".",
+    "rootDir": ".",
     "module": "ESNext",
     "moduleResolution": "Node",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "resolveJsonModule": true,
     "strict": true,
     "noImplicitReturns": true,
@@ -16,5 +20,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts", "test/**", "node_modules"]
+  "exclude": ["node_modules"]
 }
