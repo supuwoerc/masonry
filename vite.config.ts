@@ -8,7 +8,15 @@ function getPackageName() {
 }
 
 function getPackageNameCamelCase() {
-  return getPackageName().replace(/-./g, (char) => char[1].toUpperCase())
+  const raw = getPackageName() || ''
+  const withoutScope = raw.replace(/^@.*\//, '')
+  const parts = withoutScope.split(/[^a-z0-9]+/i).filter(Boolean)
+  if (parts.length === 0) {
+    return 'Library'
+  }
+  return parts
+    .map((p, i) => (i === 0 ? p : p[0].toUpperCase() + p.slice(1)))
+    .join('')
 }
 
 const fileName = {
