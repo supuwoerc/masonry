@@ -48,6 +48,12 @@ export default defineConfig({
     },
   },
   test: {
+    environment: 'jsdom',
+    coverage: {
+      provider: 'v8',
+    },
+    setupFiles: ['./setup-test.ts'],
+    globals: true,
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
