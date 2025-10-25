@@ -1,4 +1,4 @@
-import { isFunction } from '../utils'
+import { isFunction } from 'lodash-es'
 
 export interface MasonryItemStyle {
   width: number
@@ -13,7 +13,7 @@ export interface MasonryOptions {
   itemWidth: number
   itemHeight: number
   onReady?: (instance: Masonry) => void
-  onError?: (err: Error) => void
+  onError?: (err: unknown) => void
 }
 
 interface ImageInfo {
@@ -23,7 +23,6 @@ interface ImageInfo {
   index: number
   crossX: boolean
   crossY: boolean
-  overflow: boolean
 }
 
 interface PatchImageInfo extends ImageInfo {
@@ -220,8 +219,7 @@ export default class Masonry {
       const image = images[index % images.length]
       const crossX = this.#getCrossX(x)
       const crossY = this.#getCrossY(y)
-      const overflow = this.#getOverflow(x, y)
-      result.push({ image, x, y, index, crossX, crossY, overflow })
+      result.push({ image, x, y, index, crossX, crossY })
     }
     return result
   }
@@ -244,11 +242,13 @@ export default class Masonry {
     }
   }
 
-  events = {
-    mousedown: this.#mousedown.bind(this),
-    mouseup: this.#mouseup.bind(this),
-    mouseleave: this.#mouseleave.bind(this),
-    mousemove: this.#mousemove.bind(this),
+  get events() {
+    return {
+      mousedown: this.#mousedown.bind(this),
+      mouseup: this.#mouseup.bind(this),
+      mouseleave: this.#mouseleave.bind(this),
+      mousemove: this.#mousemove.bind(this),
+    }
   }
 
   #bindEvent() {
@@ -273,65 +273,56 @@ export default class Masonry {
     const patchImages: PatchImageInfo[] = []
     const toRight = x > 0
     const toLeft = x < 0
-    // const toBottom = y > 0;
-    // const toTop = y < 0;
     this.#images.forEach((info, index) => {
       info.x += x
-      // info.y += y;
-      const ox = info.x > this.#canvasWidth || info.x < -this.#itemWidth
-      const oy = info.y > this.#canvasHeight || info.y < -this.#itemHeight
-      if (ox || oy) {
-        removeIndex.push(index)
-      }
       if (toRight && info.x + this.#itemWidth > this.#canvasWidth) {
-        patchImages.push({
-          image: info.image,
-          x: info.x - this.#canvasWidth,
-          y: info.y,
-          index: index - this.columnSize,
-          from: index,
-          crossX: this.#getCrossX(info.x - this.#canvasWidth),
-          crossY: this.#getCrossY(info.y),
-          overflow: this.#getOverflow(info.x - this.#canvasWidth, info.y),
-        })
+        const oppositeIndex = index - this.columnSize
+        const opposite = this.#images[oppositeIndex]
+        const isNeedPatch = opposite && !this.#getCrossX(opposite.x)
+        if (isNeedPatch) {
+          patchImages.push({
+            image: info.image,
+            x: info.x - this.#canvasWidth,
+            y: info.y,
+            index: oppositeIndex + Math.floor(index / this.columnCapacity),
+            from: index,
+            crossX: this.#getCrossX(info.x - this.#canvasWidth),
+            crossY: this.#getCrossY(info.y),
+          })
+        }
+        if (this.#getOverflow(info.x, info.y)) {
+          removeIndex.push(index)
+        }
       }
       if (toLeft && info.x < 0) {
-        patchImages.push({
-          image: info.image,
-          x: this.#canvasWidth - info.x,
-          y: info.y,
-          index: index + this.columnSize,
-          from: index,
-          crossX: this.#getCrossX(this.#canvasWidth - info.x),
-          crossY: this.#getCrossY(info.y),
-          overflow: this.#getOverflow(this.#canvasWidth - info.x, info.y),
-        })
+        const oppositeIndex = index + this.columnSize
+        const opposite = this.#images[oppositeIndex]
+        if (opposite && !this.#getCrossX(opposite.x)) {
+          patchImages.push({
+            image: info.image,
+            x: this.#canvasWidth - info.x,
+            y: info.y,
+            index:
+              oppositeIndex
+              + Math.floor(oppositeIndex / this.columnCapacity)
+              + 1,
+            from: index,
+            crossX: this.#getCrossX(this.#canvasWidth - info.x),
+            crossY: this.#getCrossY(info.y),
+          })
+        }
       }
-      // if (info.y + this.#itemHeight > this.#canvasHeight) {
-      //   supplement.push({
-      //     image: info.image,
-      //     x: info.x,
-      //     y: info.y - this.#canvasHeight,
-      //     index: index - this.columnCapacity * this.rowCapacity,
-      //     from: index,
-      //   });
-      // }
-      // if (info.y < 0) {
-      //   supplement.push({
-      //     image: info.image,
-      //     x: info.x,
-      //     y: this.#canvasHeight - info.y,
-      //     index: index + this.columnCapacity * this.rowCapacity,
-      //     from: index,
-      //   });
-      // }
     })
     patchImages.sort((left, right) => left.index - right.index)
-    // console.log(patchImages);
-    // supplement.forEach((item) => {});
+    patchImages.forEach((item) => {
+      this.#images.splice(item.index, 0, item)
+    })
     this.#images = this.#images.filter(
       (_, index) => !removeIndex.includes(index),
     )
+    this.#images.forEach((item, index) => {
+      item.index = index
+    })
     this.#render(this.#images)
   }
 
