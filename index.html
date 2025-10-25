@@ -29,9 +29,9 @@
       import { Masonry } from "/src/index.ts";
       const canvas = document.getElementById("canvas");
       const images = [];
-      for (let index = 0; index < 10; index++) {
+      for (let index = 0; index < 15; index++) {
         images.push(
-          `https://fastly.picsum.photos/id/94/200/300.jpg?hmac=CA7x5S3EdSeRqM9TK0RxiKTcx1R96lIncvKTjTP3beI`
+          `https://dummyimage.com/200x300/000/0011ff.png&text=${index + 1}`
         );
       }
       const masonryInstance = new Masonry({

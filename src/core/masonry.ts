@@ -1,4 +1,4 @@
-import { isFunction } from 'lodash-es'
+import { chunk, flatten, isFunction } from 'lodash-es'
 
 export interface MasonryItemStyle {
   width: number
@@ -20,13 +20,6 @@ interface ImageInfo {
   image: HTMLImageElement
   x: number
   y: number
-  index: number
-  crossX: boolean
-  crossY: boolean
-}
-
-interface PatchImageInfo extends ImageInfo {
-  from: number
 }
 
 export default class Masonry {
@@ -36,11 +29,14 @@ export default class Masonry {
 
   #moveable = false
 
-  #disabled = false
+  #disabled = {
+    horizontal: false,
+    vertical: false,
+  }
 
   #gap = 0
 
-  #images: Array<ImageInfo> = []
+  #images: Array<Array<ImageInfo>> = []
 
   #itemWidth = 0
 
@@ -124,7 +120,10 @@ export default class Masonry {
   async #prepareImages(options: MasonryOptions) {
     try {
       const images = await this.#loadImages(options.items)
-      this.#images = this.#setImagesPosition(images)
+      this.#images = chunk(
+        this.#setImagesPosition(images),
+        this.columnCapacity,
+      )
     } catch (error) {
       this.onError(error)
     }
@@ -141,12 +140,14 @@ export default class Masonry {
     }
   }
 
-  enable() {
-    this.#disabled = false
+  enable(horizontal = false, vertical = false) {
+    this.#disabled.horizontal = horizontal
+    this.#disabled.vertical = vertical
   }
 
-  disable() {
-    this.#disabled = true
+  disable(horizontal = true, vertical = true) {
+    this.#disabled.horizontal = horizontal
+    this.#disabled.vertical = vertical
   }
 
   clear() {
@@ -185,20 +186,6 @@ export default class Masonry {
     return Promise.resolve(images.map((item) => item.image))
   }
 
-  #getCrossX(x: number) {
-    const corssRight
-      = x < this.#canvasWidth && x + this.#itemWidth > this.#canvasWidth
-    const corssLeft = x < 0 && x > -this.#itemWidth
-    return corssRight || corssLeft
-  }
-
-  #getCrossY(y: number) {
-    const corssBottom
-      = y < this.#canvasHeight && y + this.#itemHeight > this.#canvasHeight
-    const corssTop = y < 0 && y > -this.#itemHeight
-    return corssBottom || corssTop
-  }
-
   #getOverflow(x: number, y: number) {
     const overflowX = x < -this.#itemWidth || x > this.#canvasWidth
     const overflowY = y < -this.#itemHeight || y > this.#canvasHeight
@@ -217,9 +204,7 @@ export default class Masonry {
       const x = column * this.blockWidth
       const y = row * this.blockHeight
       const image = images[index % images.length]
-      const crossX = this.#getCrossX(x)
-      const crossY = this.#getCrossY(y)
-      result.push({ image, x, y, index, crossX, crossY })
+      result.push({ image, x, y })
     }
     return result
   }
@@ -237,7 +222,7 @@ export default class Masonry {
   }
 
   #mousemove(e: MouseEvent) {
-    if (this.#moveable && !this.#disabled) {
+    if (this.#moveable) {
       this.#move(e.movementX, e.movementY)
     }
   }
@@ -267,63 +252,86 @@ export default class Masonry {
     this.#resizeObserver.disconnect()
   }
 
-  #move(x: number, _y: number) {
+  #move(x: number, y: number) {
+    if (this.#disabled.horizontal && this.#disabled.vertical) {
+      return
+    }
     this.clear()
-    const removeIndex: number[] = []
-    const patchImages: PatchImageInfo[] = []
-    const toRight = x > 0
-    const toLeft = x < 0
-    this.#images.forEach((info, index) => {
-      info.x += x
-      if (toRight && info.x + this.#itemWidth > this.#canvasWidth) {
-        const oppositeIndex = index - this.columnSize
-        const opposite = this.#images[oppositeIndex]
-        const isNeedPatch = opposite && !this.#getCrossX(opposite.x)
-        if (isNeedPatch) {
-          patchImages.push({
-            image: info.image,
-            x: info.x - this.#canvasWidth,
-            y: info.y,
-            index: oppositeIndex + Math.floor(index / this.columnCapacity),
-            from: index,
-            crossX: this.#getCrossX(info.x - this.#canvasWidth),
-            crossY: this.#getCrossY(info.y),
-          })
-        }
-        if (this.#getOverflow(info.x, info.y)) {
-          removeIndex.push(index)
-        }
+    flatten(this.#images).forEach((item) => {
+      !this.#disabled.horizontal && (item.x += x)
+      !this.#disabled.vertical && (item.y += y)
+    })
+    const afterImages: Array<Array<ImageInfo>> = []
+    this.#images.forEach((row) => {
+      if (row.length === 0) {
+        return
       }
-      if (toLeft && info.x < 0) {
-        const oppositeIndex = index + this.columnSize
-        const opposite = this.#images[oppositeIndex]
-        if (opposite && !this.#getCrossX(opposite.x)) {
-          patchImages.push({
-            image: info.image,
-            x: this.#canvasWidth - info.x,
-            y: info.y,
-            index:
-              oppositeIndex
-              + Math.floor(oppositeIndex / this.columnCapacity)
-              + 1,
-            from: index,
-            crossX: this.#getCrossX(this.#canvasWidth - info.x),
-            crossY: this.#getCrossY(info.y),
-          })
+      const afterRow: ImageInfo[] = []
+      const leftmost = row[0]
+      const rightmost = row[row.length - 1]
+      if (x > 0 && leftmost.x > this.#gap) {
+        afterRow.push({
+          image: rightmost.image,
+          x: leftmost.x - this.blockWidth,
+          y: leftmost.y,
+        })
+      }
+      row.forEach((element) => {
+        if (!this.#getOverflow(element.x, element.y)) {
+          afterRow.push(element)
         }
+      })
+      if (x < 0 && rightmost.x < this.#canvasWidth - this.blockWidth) {
+        afterRow.push({
+          image: leftmost.image,
+          x: rightmost.x + this.blockWidth,
+          y: rightmost.y,
+        })
+      }
+      if (afterRow.length > 0) {
+        afterImages.push(afterRow)
       }
     })
-    patchImages.sort((left, right) => left.index - right.index)
-    patchImages.forEach((item) => {
-      this.#images.splice(item.index, 0, item)
-    })
-    this.#images = this.#images.filter(
-      (_, index) => !removeIndex.includes(index),
-    )
-    this.#images.forEach((item, index) => {
-      item.index = index
-    })
+    if (y !== 0) {
+      this.#handleVerticalPatch(afterImages, y)
+    }
+    this.#images = afterImages
     this.#render(this.#images)
+  }
+
+  #handleVerticalPatch(images: Array<Array<ImageInfo>>, y: number) {
+    if (images.length === 0) {
+      return
+    }
+    const firstRow = images[0]
+    const lastRow = images[images.length - 1]
+    if (y > 0 && firstRow[0] && firstRow[0].y > this.#gap) {
+      const patch = this.#columnPatch(
+        lastRow,
+        firstRow[0].y - this.blockHeight,
+      )
+      images.unshift(patch)
+    }
+
+    if (
+      y < 0
+      && lastRow[0]
+      && lastRow[0].y < this.#canvasHeight - this.blockHeight
+    ) {
+      const patch = this.#columnPatch(
+        firstRow,
+        lastRow[0].y + this.blockHeight,
+      )
+      images.push(patch)
+    }
+  }
+
+  #columnPatch(row: ImageInfo[], newY: number): ImageInfo[] {
+    return row.map((template) => ({
+      image: template.image,
+      x: template.x,
+      y: newY,
+    }))
   }
 
   resize() {
@@ -332,17 +340,21 @@ export default class Masonry {
     this.#canvasWidth = this.#canvas.clientWidth
     this.#canvasHeight = this.#canvas.clientHeight
     if (this.#images.length > 0) {
+      this.#images = chunk(flatten(this.#images), this.columnCapacity)
       this.clear()
       this.#render(this.#images)
     }
   }
 
-  #render(images: Array<ImageInfo>) {
-    const w = this.#itemWidth
-    const h = this.#itemHeight
-    for (let index = 0; index < images.length; index++) {
-      const { image, x, y } = images[index]
-      this.#canvasContext?.drawImage(image, x, y, w, h)
+  #render(images: Array<Array<ImageInfo>>) {
+    if (images.length > 0) {
+      const w = this.#itemWidth
+      const h = this.#itemHeight
+      const list = flatten(images)
+      for (let index = 0; index < list.length; index++) {
+        const { image, x, y } = list[index]
+        this.#canvasContext?.drawImage(image, x, y, w, h)
+      }
     }
   }
 }
