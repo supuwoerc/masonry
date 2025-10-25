@@ -29,6 +29,8 @@ export default class Masonry {
 
   #moveable = false
 
+  #scrollable = true
+
   #disabled = {
     horizontal: false,
     vertical: false,
@@ -227,12 +229,21 @@ export default class Masonry {
     }
   }
 
+  #wheel(e: WheelEvent) {
+    e.preventDefault()
+    if (this.#disabled.vertical || !this.#scrollable) {
+      return
+    }
+    this.#move(0, -e.deltaY)
+  }
+
   get events() {
     return {
       mousedown: this.#mousedown.bind(this),
       mouseup: this.#mouseup.bind(this),
       mouseleave: this.#mouseleave.bind(this),
       mousemove: this.#mousemove.bind(this),
+      wheel: this.#wheel.bind(this),
     }
   }
 
@@ -241,6 +252,7 @@ export default class Masonry {
     this.#canvas.addEventListener('mouseup', this.events.mouseup)
     this.#canvas.addEventListener('mouseleave', this.events.mouseleave)
     this.#canvas.addEventListener('mousemove', this.events.mousemove)
+    this.#canvas.addEventListener('wheel', this.events.wheel)
     this.#resizeObserver.observe(this.#canvas)
   }
 
@@ -249,6 +261,7 @@ export default class Masonry {
     this.#canvas.removeEventListener('mouseup', this.events.mouseup)
     this.#canvas.removeEventListener('mouseleave', this.events.mouseleave)
     this.#canvas.removeEventListener('mousemove', this.events.mousemove)
+    this.#canvas.removeEventListener('wheel', this.events.wheel)
     this.#resizeObserver.disconnect()
   }
 
@@ -335,6 +348,7 @@ export default class Masonry {
   }
 
   resize() {
+    // FIXME:resize
     this.#canvas.width = this.#canvas.clientWidth
     this.#canvas.height = this.#canvas.clientHeight
     this.#canvasWidth = this.#canvas.clientWidth
