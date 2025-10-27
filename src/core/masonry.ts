@@ -4,22 +4,21 @@ export interface MasonryItemStyle {
   width: number
   height: number
   radius?: number
-}
-export interface MasonryOptions {
-  canvas: HTMLCanvasElement
   gap?: number
-  items: Array<string>
-  style: MasonryItemStyle
-  itemWidth: number
-  itemHeight: number
-  onReady?: (instance: Masonry) => void
-  onError?: (err: unknown) => void
 }
 
-interface ImageInfo {
-  image: HTMLImageElement
+export interface MasonryItem {
+  source: CanvasImageSource
   x: number
   y: number
+}
+
+export interface MasonryOptions {
+  canvas: HTMLCanvasElement
+  items: Array<CanvasImageSource>
+  style: MasonryItemStyle
+  onReady?: (instance: Masonry) => void
+  onError?: (err: unknown) => void
 }
 
 export default class Masonry {
@@ -36,13 +35,12 @@ export default class Masonry {
     vertical: false,
   }
 
-  #gap = 0
+  #gridItems: Array<Array<MasonryItem>> = []
 
-  #images: Array<Array<ImageInfo>> = []
-
-  #itemWidth = 0
-
-  #itemHeight = 0
+  #style: MasonryItemStyle = {
+    width: 200,
+    height: 300,
+  }
 
   #canvasWidth = 0
 
@@ -76,25 +74,32 @@ export default class Masonry {
   }
 
   get blockWidth() {
-    return this.#itemWidth + this.#gap
+    return this.#style.width + (this.#style.gap ?? 0)
   }
 
   get blockHeight() {
-    return this.#itemHeight + this.#gap
+    return this.#style.height + (this.#style.gap ?? 0)
+  }
+
+  get gap() {
+    return this.#style.gap ?? 0
   }
 
   #initConfig(options: MasonryOptions) {
     if (options.items.length <= 0) {
       throw new Error('items is required')
     }
-    if (options.itemWidth <= 0) {
+    if (options.style.width <= 0) {
       throw new Error('item width must > 0')
     }
-    if (options.itemWidth <= 0) {
+    if (options.style.height <= 0) {
       throw new Error('item height must > 0')
     }
-    if ((options?.gap ?? 0) < 0) {
+    if ((options.style?.gap ?? 0) < 0) {
       throw new Error('item gap must >= 0')
+    }
+    if ((options.style?.radius ?? 0) < 0) {
+      throw new Error('item radius must >= 0')
     }
     if (!options.canvas.getContext('2d')) {
       throw new Error('2d context of canvas not supported or available')
@@ -104,9 +109,7 @@ export default class Masonry {
     }
     this.#canvas = options.canvas
     this.#canvasContext = options.canvas.getContext('2d')!
-    this.#itemWidth = options.itemWidth
-    this.#itemHeight = options.itemHeight
-    this.#gap = options?.gap ?? 20
+    this.#style = options.style
     this.#canvas.width = this.#canvas.clientWidth
     this.#canvas.height = this.#canvas.clientHeight
     this.#canvasWidth = this.#canvas.clientWidth
@@ -119,27 +122,14 @@ export default class Masonry {
     }
   }
 
-  async #prepareImages(options: MasonryOptions) {
-    try {
-      const images = await this.#loadImages(options.items)
-      this.#images = chunk(
-        this.#setImagesPosition(images),
-        this.columnCapacity,
-      )
-    } catch (error) {
-      this.onError(error)
-    }
-  }
-
-  async #draw(options: MasonryOptions) {
-    try {
-      await this.#prepareImages(options)
-      this.#render(this.#images)
-      this.#bindEvent()
-      this.onReady?.(this)
-    } catch (error) {
-      this.onError(error)
-    }
+  #draw(options: MasonryOptions) {
+    this.#gridItems = chunk(
+      this.#setItemsPosition(options.items),
+      this.columnCapacity,
+    )
+    this.#render(this.#gridItems)
+    this.#bindEvent()
+    this.onReady?.(this)
   }
 
   enable(horizontal = false, vertical = false) {
@@ -161,52 +151,22 @@ export default class Masonry {
     this.clear()
   }
 
-  async #loadImages(items: Array<string>) {
-    const imagePromises = items.map((url, index) => {
-      return new Promise<{ image: HTMLImageElement, index: number }>(
-        (resolve, reject) => {
-          const image = new Image()
-          image.onload = () => {
-            resolve({ image, index })
-          }
-          image.onerror = () => {
-            reject(new Error(`failed to load: ${url}`))
-          }
-          image.src = url
-        },
-      )
-    })
-    const results = await Promise.allSettled(imagePromises)
-    const rejected = results.filter((r) => r.status === 'rejected')
-    if (rejected.length > 0) {
-      const reasons = rejected.map((item) => item.reason)
-      return Promise.reject(reasons)
-    }
-    const fulfilled = results.filter((r) => r.status === 'fulfilled')
-    const images = fulfilled.map((item) => item.value)
-    images.sort((left, right) => left.index - right.index)
-    return Promise.resolve(images.map((item) => item.image))
-  }
-
   #getOverflow(x: number, y: number) {
-    const overflowX = x < -this.#itemWidth || x > this.#canvasWidth
-    const overflowY = y < -this.#itemHeight || y > this.#canvasHeight
+    const overflowX = x < -this.#style.width || x > this.#canvasWidth
+    const overflowY = y < -this.#style.height || y > this.#canvasHeight
     return overflowX || overflowY
   }
 
-  #setImagesPosition(images: Array<HTMLImageElement>) {
-    const result: Array<ImageInfo> = []
-    for (
-      let index = 0;
-      index < this.columnCapacity * this.rowCapacity;
-      index++
-    ) {
+  #setItemsPosition(items: Array<CanvasImageSource>) {
+    const result: Array<MasonryItem> = []
+    const count = this.columnCapacity * this.rowCapacity
+    for (let index = 0; index < count; index++) {
       const column = index % this.columnCapacity
       const row = Math.floor(index / this.columnCapacity)
       const x = column * this.blockWidth
       const y = row * this.blockHeight
-      const image = images[index % images.length]
-      result.push({ image, x, y })
+      const source = items[index % items.length]
+      result.push({ source, x, y })
     }
     return result
   }
@@ -270,21 +230,21 @@ export default class Masonry {
       return
     }
     this.clear()
-    flatten(this.#images).forEach((item) => {
+    flatten(this.#gridItems).forEach((item) => {
       !this.#disabled.horizontal && (item.x += x)
       !this.#disabled.vertical && (item.y += y)
     })
-    const afterImages: Array<Array<ImageInfo>> = []
-    this.#images.forEach((row) => {
+    const afterImages: Array<Array<MasonryItem>> = []
+    this.#gridItems.forEach((row) => {
       if (row.length === 0) {
         return
       }
-      const afterRow: ImageInfo[] = []
+      const afterRow: MasonryItem[] = []
       const leftmost = row[0]
       const rightmost = row[row.length - 1]
-      if (x > 0 && leftmost.x > this.#gap) {
+      if (x > 0 && leftmost.x > this.gap) {
         afterRow.push({
-          image: rightmost.image,
+          source: rightmost.source,
           x: leftmost.x - this.blockWidth,
           y: leftmost.y,
         })
@@ -296,7 +256,7 @@ export default class Masonry {
       })
       if (x < 0 && rightmost.x < this.#canvasWidth - this.blockWidth) {
         afterRow.push({
-          image: leftmost.image,
+          source: leftmost.source,
           x: rightmost.x + this.blockWidth,
           y: rightmost.y,
         })
@@ -308,17 +268,17 @@ export default class Masonry {
     if (y !== 0) {
       this.#handleVerticalPatch(afterImages, y)
     }
-    this.#images = afterImages
-    this.#render(this.#images)
+    this.#gridItems = afterImages
+    this.#render(this.#gridItems)
   }
 
-  #handleVerticalPatch(images: Array<Array<ImageInfo>>, y: number) {
+  #handleVerticalPatch(images: Array<Array<MasonryItem>>, y: number) {
     if (images.length === 0) {
       return
     }
     const firstRow = images[0]
     const lastRow = images[images.length - 1]
-    if (y > 0 && firstRow[0] && firstRow[0].y > this.#gap) {
+    if (y > 0 && firstRow[0] && firstRow[0].y > this.gap) {
       const patch = this.#columnPatch(
         lastRow,
         firstRow[0].y - this.blockHeight,
@@ -339,9 +299,9 @@ export default class Masonry {
     }
   }
 
-  #columnPatch(row: ImageInfo[], newY: number): ImageInfo[] {
+  #columnPatch(row: MasonryItem[], newY: number): MasonryItem[] {
     return row.map((template) => ({
-      image: template.image,
+      source: template.source,
       x: template.x,
       y: newY,
     }))
@@ -353,21 +313,21 @@ export default class Masonry {
     this.#canvas.height = this.#canvas.clientHeight
     this.#canvasWidth = this.#canvas.clientWidth
     this.#canvasHeight = this.#canvas.clientHeight
-    if (this.#images.length > 0) {
-      this.#images = chunk(flatten(this.#images), this.columnCapacity)
+    if (this.#gridItems.length > 0) {
+      this.#gridItems = chunk(flatten(this.#gridItems), this.columnCapacity)
       this.clear()
-      this.#render(this.#images)
+      this.#render(this.#gridItems)
     }
   }
 
-  #render(images: Array<Array<ImageInfo>>) {
+  #render(images: Array<Array<MasonryItem>>) {
     if (images.length > 0) {
-      const w = this.#itemWidth
-      const h = this.#itemHeight
+      const w = this.#style.width
+      const h = this.#style.height
       const list = flatten(images)
       for (let index = 0; index < list.length; index++) {
-        const { image, x, y } = list[index]
-        this.#canvasContext?.drawImage(image, x, y, w, h)
+        const { source, x, y } = list[index]
+        this.#canvasContext?.drawImage(source, x, y, w, h)
       }
     }
   }

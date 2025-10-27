@@ -28,19 +28,31 @@
     <script type="module">
       import { Masonry } from "/src/index.ts";
       const canvas = document.getElementById("canvas");
-      const images = [];
+      const imagePromises = [];
       for (let index = 0; index < 15; index++) {
-        images.push(
-          `https://dummyimage.com/200x300/000/0011ff.png&text=${index + 1}`
-        );
+        const p = new Promise((resolve, reject) => {
+          const img = new Image(200, 300);
+          img.onload = () => {
+            resolve(img);
+          };
+          img.onerror = (e) => {
+            reject(e);
+          };
+          img.src = `https://lipsum.app/id/${index + 1}/200x300`;
+        });
+        imagePromises.push(p);
       }
+
+      const images = await Promise.all(imagePromises);
+
       const masonryInstance = new Masonry({
         canvas,
         items: images,
-        itemWidth: 200,
-        itemHeight: 300,
-        gap: 10,
-        redundancy: 1,
+        style: {
+          width: 200,
+          height: 300,
+          gap: 10,
+        },
         onReady: (ins) => {
           console.log("masonry is ready!");
           console.log(ins);
