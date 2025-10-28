@@ -54,7 +54,7 @@ export default class Masonry {
 
   constructor(options: MasonryOptions) {
     this.#initConfig(options)
-    this.#draw(options)
+    this.#initializeGrid(options)
   }
 
   get columnCapacity() {
@@ -122,9 +122,9 @@ export default class Masonry {
     }
   }
 
-  #draw(options: MasonryOptions) {
+  #initializeGrid(options: MasonryOptions) {
     this.#gridItems = chunk(
-      this.#setItemsPosition(options.items),
+      this.#calculateItemPositions(options.items),
       this.columnCapacity,
     )
     this.#render(this.#gridItems)
@@ -151,13 +151,13 @@ export default class Masonry {
     this.clear()
   }
 
-  #getOverflow(x: number, y: number) {
+  #isOutOfBounds(x: number, y: number) {
     const overflowX = x < -this.#style.width || x > this.#canvasWidth
     const overflowY = y < -this.#style.height || y > this.#canvasHeight
     return overflowX || overflowY
   }
 
-  #setItemsPosition(items: Array<CanvasImageSource>) {
+  #calculateItemPositions(items: Array<CanvasImageSource>) {
     const result: Array<MasonryItem> = []
     const count = this.columnCapacity * this.rowCapacity
     for (let index = 0; index < count; index++) {
@@ -185,7 +185,7 @@ export default class Masonry {
 
   #mousemove(e: MouseEvent) {
     if (this.#moveable) {
-      this.#move(e.movementX, e.movementY)
+      this.#updateGridPosition(e.movementX, e.movementY)
     }
   }
 
@@ -194,7 +194,7 @@ export default class Masonry {
     if (this.#disabled.vertical || !this.#scrollable) {
       return
     }
-    this.#move(0, -e.deltaY)
+    this.#updateGridPosition(0, -e.deltaY)
   }
 
   get events() {
@@ -225,7 +225,7 @@ export default class Masonry {
     this.#resizeObserver.disconnect()
   }
 
-  #move(x: number, y: number) {
+  #updateGridPosition(x: number, y: number) {
     if (this.#disabled.horizontal && this.#disabled.vertical) {
       return
     }
@@ -250,7 +250,7 @@ export default class Masonry {
         })
       }
       row.forEach((element) => {
-        if (!this.#getOverflow(element.x, element.y)) {
+        if (!this.#isOutOfBounds(element.x, element.y)) {
           afterRow.push(element)
         }
       })
@@ -266,13 +266,13 @@ export default class Masonry {
       }
     })
     if (y !== 0) {
-      this.#handleVerticalPatch(afterImages, y)
+      this.#appendVerticalItems(afterImages, y)
     }
     this.#gridItems = afterImages
     this.#render(this.#gridItems)
   }
 
-  #handleVerticalPatch(images: Array<Array<MasonryItem>>, y: number) {
+  #appendVerticalItems(images: Array<Array<MasonryItem>>, y: number) {
     if (images.length === 0) {
       return
     }

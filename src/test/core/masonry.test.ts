@@ -66,14 +66,17 @@ describe('masonry constructor', () => {
     const ready = new Promise<void>((resolve, reject) => {
       try {
         let instance: Masonry | null = null
+        const img1 = new Image()
+        const img2 = new Image()
+        const img3 = new Image()
+        img1.src = tinyPng
+        img2.src = tinyPng
+        img3.src = tinyPng
         instance = new Masonry({
           canvas,
-          items: [tinyPng, tinyPng, tinyPng],
-          itemWidth: 50,
-          itemHeight: 50,
-          style: { width: 50, height: 50 },
+          items: [img1, img2, img3],
+          style: { width: 50, height: 50, gap: 10 },
           onReady: () => {
-            // ensure instance is cleaned up and satisfy eslint no-new
             instance?.destroy()
             resolve()
           },
