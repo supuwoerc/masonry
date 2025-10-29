@@ -26,6 +26,8 @@ export default class Masonry {
 
   #canvasContext!: CanvasRenderingContext2D
 
+  #supportsRoundRect = false
+
   #moveable = false
 
   #scrollable = true
@@ -113,17 +115,32 @@ export default class Masonry {
     }
     this.#canvas = options.canvas
     this.#canvasContext = options.canvas.getContext('2d')!
+    this.#supportsRoundRect = Boolean(
+      this.#canvasContext && this.#canvasContext.roundRect,
+    )
     this.#style = options.style
-    this.#canvas.width = this.#canvas.clientWidth
-    this.#canvas.height = this.#canvas.clientHeight
-    this.#canvasWidth = this.#canvas.clientWidth
-    this.#canvasHeight = this.#canvas.clientHeight
+    this.#setupCanvas()
     if (options.onError && isFunction(options.onError)) {
       this.onError = options.onError
     }
     if (options.onReady && isFunction(options.onReady)) {
       this.onReady = options.onReady
     }
+  }
+
+  #setupCanvas() {
+    const dpr = window.devicePixelRatio || 1
+    const displayWidth = this.#canvas.clientWidth
+    const displayHeight = this.#canvas.clientHeight
+    this.#canvas.width = displayWidth * dpr
+    this.#canvas.height = displayHeight * dpr
+    this.#canvas.style.width = `${displayWidth}px`
+    this.#canvas.style.height = `${displayHeight}px`
+    this.#canvasWidth = displayWidth
+    this.#canvasHeight = displayHeight
+    this.#canvasContext.scale(dpr, dpr)
+    this.#canvasContext.imageSmoothingEnabled = true
+    this.#canvasContext.imageSmoothingQuality = 'high'
   }
 
   #initializeGrid(options: MasonryOptions) {
@@ -312,10 +329,7 @@ export default class Masonry {
 
   resize() {
     // FIXME:resize
-    this.#canvas.width = this.#canvas.clientWidth
-    this.#canvas.height = this.#canvas.clientHeight
-    this.#canvasWidth = this.#canvas.clientWidth
-    this.#canvasHeight = this.#canvas.clientHeight
+    this.#setupCanvas()
     if (this.#gridItems.length > 0) {
       this.#gridItems = chunk(flatten(this.#gridItems), this.columnCapacity)
       this.clear()
@@ -331,25 +345,29 @@ export default class Masonry {
     h: number,
     radius: number,
   ) {
-    if (!this.#canvasContext) {
-      return
+    if (this.#canvasContext) {
+      const ctx = this.#canvasContext
+      ctx.save()
+      ctx.beginPath()
+      if (this.#supportsRoundRect) {
+        ctx.roundRect(x, y, w, h, radius)
+      } else {
+        ctx.moveTo(x + radius, y)
+        ctx.lineTo(x + w - radius, y)
+        ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
+        ctx.lineTo(x + w, y + h - radius)
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+        ctx.lineTo(x + radius, y + h)
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
+        ctx.lineTo(x, y + radius)
+        ctx.quadraticCurveTo(x, y, x + radius, y)
+        ctx.closePath()
+      }
+
+      ctx.clip()
+      ctx.drawImage(source, x, y, w, h)
+      ctx.restore()
     }
-    const ctx = this.#canvasContext
-    ctx.save()
-    ctx.beginPath()
-    ctx.moveTo(x + radius, y)
-    ctx.lineTo(x + w - radius, y)
-    ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
-    ctx.lineTo(x + w, y + h - radius)
-    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
-    ctx.lineTo(x + radius, y + h)
-    ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
-    ctx.lineTo(x, y + radius)
-    ctx.quadraticCurveTo(x, y, x + radius, y)
-    ctx.closePath()
-    ctx.clip()
-    ctx.drawImage(source, x, y, w, h)
-    ctx.restore()
   }
 
   #render(images: Array<Array<MasonryItem>>) {
