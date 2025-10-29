@@ -35,12 +35,12 @@ export default class Masonry {
     vertical: false,
   }
 
-  #gridItems: Array<Array<MasonryItem>> = []
-
   #style: MasonryItemStyle = {
     width: 200,
     height: 300,
   }
+
+  #gridItems: Array<Array<MasonryItem>> = []
 
   #canvasWidth = 0
 
@@ -83,6 +83,10 @@ export default class Masonry {
 
   get gap() {
     return this.#style.gap ?? 0
+  }
+
+  get radius() {
+    return this.#style.radius ?? 0
   }
 
   #initConfig(options: MasonryOptions) {
@@ -239,28 +243,7 @@ export default class Masonry {
       if (row.length === 0) {
         return
       }
-      const afterRow: MasonryItem[] = []
-      const leftmost = row[0]
-      const rightmost = row[row.length - 1]
-      if (x > 0 && leftmost.x > this.gap) {
-        afterRow.push({
-          source: rightmost.source,
-          x: leftmost.x - this.blockWidth,
-          y: leftmost.y,
-        })
-      }
-      row.forEach((element) => {
-        if (!this.#isOutOfBounds(element.x, element.y)) {
-          afterRow.push(element)
-        }
-      })
-      if (x < 0 && rightmost.x < this.#canvasWidth - this.blockWidth) {
-        afterRow.push({
-          source: leftmost.source,
-          x: rightmost.x + this.blockWidth,
-          y: rightmost.y,
-        })
-      }
+      const afterRow = this.#appendHorizontalItems(row, x)
       if (afterRow.length > 0) {
         afterImages.push(afterRow)
       }
@@ -272,29 +255,49 @@ export default class Masonry {
     this.#render(this.#gridItems)
   }
 
+  #appendHorizontalItems(row: MasonryItem[], x: number): Array<MasonryItem> {
+    if (row.length === 0) {
+      return row
+    }
+    const afterRow: MasonryItem[] = []
+    const leftmost = row[0]
+    const rightmost = row[row.length - 1]
+    if (x > 0 && leftmost.x > this.gap) {
+      afterRow.push({
+        source: rightmost.source,
+        x: leftmost.x - this.blockWidth,
+        y: leftmost.y,
+      })
+    }
+    row.forEach((element) => {
+      if (!this.#isOutOfBounds(element.x, element.y)) {
+        afterRow.push(element)
+      }
+    })
+    if (x < 0 && rightmost.x < this.#canvasWidth - this.blockWidth) {
+      afterRow.push({
+        source: leftmost.source,
+        x: rightmost.x + this.blockWidth,
+        y: rightmost.y,
+      })
+    }
+    return afterRow
+  }
+
   #appendVerticalItems(images: Array<Array<MasonryItem>>, y: number) {
     if (images.length === 0) {
       return
     }
     const firstRow = images[0]
+    const firstRowY = firstRow[0].y
     const lastRow = images[images.length - 1]
-    if (y > 0 && firstRow[0] && firstRow[0].y > this.gap) {
-      const patch = this.#columnPatch(
-        lastRow,
-        firstRow[0].y - this.blockHeight,
-      )
+    const lastRowY = lastRow[0].y
+    if (y > 0 && firstRowY > this.gap) {
+      const patch = this.#columnPatch(lastRow, firstRowY - this.blockHeight)
       images.unshift(patch)
     }
-
-    if (
-      y < 0
-      && lastRow[0]
-      && lastRow[0].y < this.#canvasHeight - this.blockHeight
-    ) {
-      const patch = this.#columnPatch(
-        firstRow,
-        lastRow[0].y + this.blockHeight,
-      )
+    if (y < 0 && lastRowY < this.#canvasHeight - this.blockHeight) {
+      const patch = this.#columnPatch(firstRow, lastRowY + this.blockHeight)
       images.push(patch)
     }
   }
@@ -320,14 +323,48 @@ export default class Masonry {
     }
   }
 
+  #roundedDraw(
+    source: CanvasImageSource,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radius: number,
+  ) {
+    if (!this.#canvasContext) {
+      return
+    }
+    const ctx = this.#canvasContext
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(x + radius, y)
+    ctx.lineTo(x + w - radius, y)
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
+    ctx.lineTo(x + w, y + h - radius)
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+    ctx.lineTo(x + radius, y + h)
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
+    ctx.lineTo(x, y + radius)
+    ctx.quadraticCurveTo(x, y, x + radius, y)
+    ctx.closePath()
+    ctx.clip()
+    ctx.drawImage(source, x, y, w, h)
+    ctx.restore()
+  }
+
   #render(images: Array<Array<MasonryItem>>) {
     if (images.length > 0) {
       const w = this.#style.width
       const h = this.#style.height
       const list = flatten(images)
+      const radius = this.radius
       for (let index = 0; index < list.length; index++) {
         const { source, x, y } = list[index]
-        this.#canvasContext?.drawImage(source, x, y, w, h)
+        if (radius > 0) {
+          this.#roundedDraw(source, x, y, w, h, radius)
+        } else {
+          this.#canvasContext?.drawImage(source, x, y, w, h)
+        }
       }
     }
   }
