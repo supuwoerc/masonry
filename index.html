@@ -26,8 +26,8 @@
     <canvas id="canvas"></canvas>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { Masonry } from "/src/index.ts";
-      const canvas = document.getElementById("canvas");
+      import { Masonry } from "/src/index.ts"
+      const canvas = document.getElementById("canvas")
       const urls = [
         "https://images.pexels.com/photos/3538558/pexels-photo-3538558.jpeg",
         "https://images.pexels.com/photos/34664019/pexels-photo-34664019.jpeg",
@@ -44,24 +44,24 @@
         "https://images.pexels.com/photos/6019903/pexels-photo-6019903.jpeg",
         "https://images.pexels.com/photos/6073519/pexels-photo-6073519.jpeg",
         "https://images.pexels.com/photos/417014/pexels-photo-417014.jpeg",
-      ];
-      const imagePromises = [];
+      ]
+      const imagePromises = []
       for (let index = 0; index < 15; index++) {
         const p = new Promise((resolve, reject) => {
-          const img = new Image(200, 300);
+          const img = new Image(200, 300)
           img.onload = () => {
-            resolve(img);
-          };
+            resolve(img)
+          }
           img.onerror = (e) => {
-            reject(e);
-          };
+            reject(e)
+          }
           // img.src = `https://lipsum.app/id/${index + 1}/200x300`;
-          img.src = urls[index % urls.length];
-        });
-        imagePromises.push(p);
+          img.src = urls[index % urls.length]
+        })
+        imagePromises.push(p)
       }
 
-      const images = await Promise.all(imagePromises);
+      const images = await Promise.all(imagePromises)
 
       const masonryInstance = new Masonry({
         canvas,
@@ -73,11 +73,12 @@
           radius: 10,
         },
         onReady: (ins) => {
-          console.log("masonry is ready!");
-          console.log(ins);
+          console.log("masonry is ready!")
+          console.log(ins)
+          ins.move(-100, -150)
         },
         onError: (error) => console.error("masonry error:", error),
-      });
+      })
     </script>
   </body>
 </html>

@@ -172,6 +172,12 @@ export default class Masonry {
     this.clear()
   }
 
+  move(x = 0, y = 0) {
+    if (x !== 0 || y !== 0) {
+      this.#updateGridPosition(x, y)
+    }
+  }
+
   #isOutOfBounds(x: number, y: number) {
     const overflowX = x < -this.#style.width || x > this.#canvasWidth
     const overflowY = y < -this.#style.height || y > this.#canvasHeight
