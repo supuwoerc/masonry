@@ -1,22 +1,7 @@
-/// <reference types="vitest" />
+/// <reference types="vitest/config" />
 import path from 'node:path'
 import { defineConfig } from 'vite'
-import packageJson from './package.json'
-
-function getPackageNameCamelCase() {
-  const raw = packageJson.name || ''
-  const withoutScope = raw.replace(/^@.*\//, '')
-  const parts = withoutScope.split(/[^a-z0-9]+/i).filter(Boolean)
-  return parts[0] ?? 'lib'
-}
-
-const fileName = {
-  es: `${getPackageNameCamelCase()}.esm.js`,
-  cjs: `${getPackageNameCamelCase()}.cjs`,
-  iife: `${getPackageNameCamelCase()}.iife.js`,
-}
-
-const formats = Object.keys(fileName) as Array<keyof typeof fileName>
+import dts from 'vite-plugin-dts'
 
 export default defineConfig({
   base: './',
@@ -24,9 +9,8 @@ export default defineConfig({
     outDir: './dist',
     lib: {
       entry: path.resolve(__dirname, 'src/index.ts'),
-      name: getPackageNameCamelCase(),
-      formats,
-      fileName: (format) => fileName[format],
+      formats: ['es', 'cjs'],
+      fileName: (format) => `index.${format}.js`,
     },
     minify: 'terser',
     terserOptions: {
@@ -38,10 +22,17 @@ export default defineConfig({
       },
     },
   },
+  plugins: [
+    dts({
+      insertTypesEntry: true,
+      rollupTypes: true,
+    }),
+  ],
   test: {
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
+      reporter: ['text', 'json', 'html'],
     },
     setupFiles: ['./setup-test.ts'],
     globals: true,

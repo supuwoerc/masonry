@@ -1,0 +1,22 @@
+{
+  "github": {
+    "release": true
+  },
+  "git": {
+    "commitMessage": "chore: v${version}",
+    "tagName": "v${version}"
+  },
+  "npm": {
+    "publish": false
+  },
+  "hooks": {
+    "after:bump": "echo release success!!!"
+  },
+  "plugins": {
+    "release-it-pnpm": {},
+    "@release-it/conventional-changelog": {
+      "preset": "angular",
+      "infile": "CHANGELOG.md"
+    }
+  }
+}
