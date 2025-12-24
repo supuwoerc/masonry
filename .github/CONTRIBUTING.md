@@ -1,10 +1,10 @@
 # Contributing
 
-Contributions to LXC ID Mapper are always welcome but please try to follow these guidelines when sending in something as it will help addressing the issue quicker and more smoothly.
+Contributions to this project are always welcome but please try to follow these guidelines when sending in something as it will help addressing the issue quicker and more smoothly.
 
 ## Code of Conduct
 
-Contributors are expected to adhere to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Contributors are expected to adhere to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Submit an issue
 
@@ -28,4 +28,4 @@ Thanks in advance for your contribution.
 5. If your change is based on existing functionality, please consider refactoring first. Pull requests that duplicate code will not make it in very quick, if at all.
 6. Do not include changes that are not related to the issue at hand.
 7. Follow the same coding style in regard to spaces, semicolons, variable naming etc.
-8. Always add tests - after all this is a testing framework.
+8. Always add tests

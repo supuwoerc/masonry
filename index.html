@@ -26,24 +26,24 @@
     <canvas id="canvas"></canvas>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { Masonry } from "/src/index.ts"
-      const canvas = document.getElementById("canvas")
+      import { Masonry, FPSCounter } from '/src/index.ts'
+      const canvas = document.getElementById('canvas')
       const urls = [
-        "https://images.pexels.com/photos/3538558/pexels-photo-3538558.jpeg",
-        "https://images.pexels.com/photos/34664019/pexels-photo-34664019.jpeg",
-        "https://images.pexels.com/photos/1624496/pexels-photo-1624496.jpeg",
-        "https://images.pexels.com/photos/3052361/pexels-photo-3052361.jpeg",
-        "https://images.pexels.com/photos/1707215/pexels-photo-1707215.jpeg",
-        "https://images.pexels.com/photos/937980/pexels-photo-937980.jpeg",
-        "https://images.pexels.com/photos/36729/tulip-flower-bloom-pink.jpg",
-        "https://images.pexels.com/photos/4004375/pexels-photo-4004375.jpeg",
-        "https://images.pexels.com/photos/28821755/pexels-photo-28821755.jpeg",
-        "https://images.pexels.com/photos/3744162/pexels-photo-3744162.jpeg",
-        "https://images.pexels.com/photos/7711099/pexels-photo-7711099.jpeg",
-        "https://images.pexels.com/photos/4976384/pexels-photo-4976384.jpeg",
-        "https://images.pexels.com/photos/6019903/pexels-photo-6019903.jpeg",
-        "https://images.pexels.com/photos/6073519/pexels-photo-6073519.jpeg",
-        "https://images.pexels.com/photos/417014/pexels-photo-417014.jpeg",
+        'https://images.pexels.com/photos/3538558/pexels-photo-3538558.jpeg',
+        'https://images.pexels.com/photos/34664019/pexels-photo-34664019.jpeg',
+        'https://images.pexels.com/photos/1624496/pexels-photo-1624496.jpeg',
+        'https://images.pexels.com/photos/3052361/pexels-photo-3052361.jpeg',
+        'https://images.pexels.com/photos/1707215/pexels-photo-1707215.jpeg',
+        'https://images.pexels.com/photos/937980/pexels-photo-937980.jpeg',
+        'https://images.pexels.com/photos/36729/tulip-flower-bloom-pink.jpg',
+        'https://images.pexels.com/photos/4004375/pexels-photo-4004375.jpeg',
+        'https://images.pexels.com/photos/28821755/pexels-photo-28821755.jpeg',
+        'https://images.pexels.com/photos/3744162/pexels-photo-3744162.jpeg',
+        'https://images.pexels.com/photos/7711099/pexels-photo-7711099.jpeg',
+        'https://images.pexels.com/photos/4976384/pexels-photo-4976384.jpeg',
+        'https://images.pexels.com/photos/6019903/pexels-photo-6019903.jpeg',
+        'https://images.pexels.com/photos/6073519/pexels-photo-6073519.jpeg',
+        'https://images.pexels.com/photos/417014/pexels-photo-417014.jpeg',
       ]
       const imagePromises = []
       for (let index = 0; index < 30; index++) {
@@ -73,11 +73,14 @@
           radius: 10,
         },
         onReady: (ins) => {
-          console.log("masonry is ready!")
+          console.log('masonry is ready!')
           console.log(ins)
         },
-        onError: (error) => console.error("masonry error:", error),
+        onError: (error) => console.error('masonry error:', error),
       })
+
+      const counter = new FPSCounter()
+      document.addEventListener('dblclick', () => counter.toggle())
     </script>
   </body>
 </html>

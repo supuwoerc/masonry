@@ -1,32 +1,35 @@
 import { chunk, flatten, isFunction } from 'lodash-es'
+import { Validator } from '@/helper/validator'
+import { isCanvasSupported } from '@/utils/canvas'
+import { configRules } from './config-rules'
+import { MasonryError } from './error'
+import 'path2d-polyfill'
 
-export interface MasonryItemStyle {
+export interface GridItemStyle {
   width: number
   height: number
   radius?: number
   gap?: number
 }
 
-export interface MasonryItem {
+export interface GridItem {
   source: CanvasImageSource
   x: number
   y: number
 }
 
-export interface MasonryOptions {
+export interface Config {
   canvas: HTMLCanvasElement
   items: Array<CanvasImageSource>
-  style: MasonryItemStyle
+  style: GridItemStyle
   onReady?: (instance: Masonry) => void
   onError?: (err: unknown) => void
 }
 
-export default class Masonry {
+export class Masonry {
   #canvas!: HTMLCanvasElement
 
   #canvasContext!: CanvasRenderingContext2D
-
-  #supportsRoundRect = false
 
   #moveable = false
 
@@ -37,12 +40,12 @@ export default class Masonry {
     vertical: false,
   }
 
-  #style: MasonryItemStyle = {
+  #style: GridItemStyle = {
     width: 200,
     height: 300,
   }
 
-  #gridItems: Array<Array<MasonryItem>> = []
+  #gridItems: Array<Array<GridItem>> = []
 
   #canvasWidth = 0
 
@@ -50,11 +53,13 @@ export default class Masonry {
 
   #resizeObserver = new ResizeObserver(() => this.resize())
 
+  #configValidator = new Validator<Config>(configRules)
+
   onReady: ((instance: Masonry) => void) | null = null
 
   onError = (err: unknown) => console.error(err)
 
-  constructor(options: MasonryOptions) {
+  constructor(options: Config) {
     this.#initConfig(options)
     this.#initializeGrid(options)
   }
@@ -91,33 +96,16 @@ export default class Masonry {
     return this.#style.radius ?? 0
   }
 
-  #initConfig(options: MasonryOptions) {
-    if (options.items.length <= 0) {
-      throw new Error('items is required')
+  #initConfig(options: Config) {
+    if (!isCanvasSupported()) {
+      throw new MasonryError('the current environment does not support the canvas API')
     }
-    if (options.style.width <= 0) {
-      throw new Error('item width must > 0')
-    }
-    if (options.style.height <= 0) {
-      throw new Error('item height must > 0')
-    }
-    if ((options.style?.gap ?? 0) < 0) {
-      throw new Error('item gap must >= 0')
-    }
-    if ((options.style?.radius ?? 0) < 0) {
-      throw new Error('item radius must >= 0')
-    }
-    if (!options.canvas.getContext('2d')) {
-      throw new Error('2d context of canvas not supported or available')
-    }
-    if (options.onError && !isFunction(options.onError)) {
-      throw new Error('onError is not a valid callback function')
+    const { valid, errors } = this.#configValidator.validate(options)
+    if (!valid) {
+      throw new MasonryError(errors.join('\n'))
     }
     this.#canvas = options.canvas
     this.#canvasContext = options.canvas.getContext('2d')!
-    this.#supportsRoundRect = Boolean(
-      this.#canvasContext && this.#canvasContext.roundRect,
-    )
     this.#style = options.style
     this.#setupCanvas()
     if (options.onError && isFunction(options.onError)) {
@@ -143,11 +131,8 @@ export default class Masonry {
     this.#canvasContext.imageSmoothingQuality = 'high'
   }
 
-  #initializeGrid(options: MasonryOptions) {
-    this.#gridItems = chunk(
-      this.#calculateItemPositions(options.items),
-      this.columnCapacity,
-    )
+  #initializeGrid(options: Config) {
+    this.#gridItems = chunk(this.#calculateItemPositions(options.items), this.columnCapacity)
     this.#render(this.#gridItems)
     this.#bindEvent()
     this.onReady?.(this)
@@ -179,7 +164,7 @@ export default class Masonry {
   }
 
   #calculateItemPositions(items: Array<CanvasImageSource>) {
-    const result: Array<MasonryItem> = []
+    const result: Array<GridItem> = []
     const count = this.columnCapacity * this.rowCapacity
     for (let index = 0; index < count; index++) {
       const column = index % this.columnCapacity
@@ -255,7 +240,7 @@ export default class Masonry {
       !this.#disabled.horizontal && (item.x += x)
       !this.#disabled.vertical && (item.y += y)
     })
-    const afterImages: Array<Array<MasonryItem>> = []
+    const afterImages: Array<Array<GridItem>> = []
     this.#gridItems.forEach((row) => {
       if (row.length === 0) {
         return
@@ -272,11 +257,11 @@ export default class Masonry {
     this.#render(this.#gridItems)
   }
 
-  #appendHorizontalItems(row: MasonryItem[], x: number): Array<MasonryItem> {
+  #appendHorizontalItems(row: GridItem[], x: number): Array<GridItem> {
     if (row.length === 0) {
       return row
     }
-    const afterRow: MasonryItem[] = []
+    const afterRow: GridItem[] = []
     const leftmost = row[0]
     const rightmost = row[row.length - 1]
     if (x > 0 && leftmost.x > this.gap) {
@@ -301,7 +286,7 @@ export default class Masonry {
     return afterRow
   }
 
-  #appendVerticalItems(images: Array<Array<MasonryItem>>, y: number) {
+  #appendVerticalItems(images: Array<Array<GridItem>>, y: number) {
     if (images.length === 0) {
       return
     }
@@ -319,7 +304,7 @@ export default class Masonry {
     }
   }
 
-  #columnPatch(row: MasonryItem[], newY: number): MasonryItem[] {
+  #columnPatch(row: GridItem[], newY: number): GridItem[] {
     return row.map((template) => ({
       source: template.source,
       x: template.x,
@@ -349,28 +334,14 @@ export default class Masonry {
       const ctx = this.#canvasContext
       ctx.save()
       ctx.beginPath()
-      if (this.#supportsRoundRect) {
-        ctx.roundRect(x, y, w, h, radius)
-      } else {
-        ctx.moveTo(x + radius, y)
-        ctx.lineTo(x + w - radius, y)
-        ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
-        ctx.lineTo(x + w, y + h - radius)
-        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
-        ctx.lineTo(x + radius, y + h)
-        ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
-        ctx.lineTo(x, y + radius)
-        ctx.quadraticCurveTo(x, y, x + radius, y)
-        ctx.closePath()
-      }
-
+      ctx.roundRect(x, y, w, h, radius)
       ctx.clip()
       ctx.drawImage(source, x, y, w, h)
       ctx.restore()
     }
   }
 
-  #render(images: Array<Array<MasonryItem>>) {
+  #render(images: Array<Array<GridItem>>) {
     if (images.length > 0) {
       const w = this.#style.width
       const h = this.#style.height
