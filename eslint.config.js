@@ -11,6 +11,7 @@ export default antfu(
       'style/arrow-parens': ['error', 'always'],
       'curly': ['error', 'all'],
       'antfu/consistent-list-newline': 'off',
+      'style/member-delimiter-style': 'off',
     },
   },
   {

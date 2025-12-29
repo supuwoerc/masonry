@@ -1,5 +1,5 @@
 import type { CheckableType } from '@/utils/is'
-import { get, isEmpty, isNull, isUndefined } from 'lodash-es'
+import { get, isBoolean, isEmpty, isNull, isUndefined } from 'lodash-es'
 import { isTargetType } from '@/utils/is'
 
 export interface Rule<T extends object> {
@@ -34,22 +34,22 @@ export class Validator<T extends object> {
       const value = get(target, rule.key)
 
       if (rule.required && (isUndefined(value) || isNull(value))) {
-        errors.push(rule.message)
+        errors.push(`rule.required:${rule.message}`)
         continue
       }
 
       if (rule.type && !this.#checkType(value, rule.type)) {
-        errors.push(rule.message)
+        errors.push(`rule.type:${rule.message}`)
         continue
       }
 
-      if (!rule.allowEmpty && isEmpty(value)) {
-        errors.push(rule.message)
+      if (isBoolean(rule.allowEmpty) && !rule.allowEmpty && isEmpty(value)) {
+        errors.push(`rule.allowEmpty:${rule.message}`)
         continue
       }
 
       if (rule.validate && !rule.validate(value, target)) {
-        errors.push(rule.message)
+        errors.push(`rule.validate:${rule.message}`)
       }
     }
 

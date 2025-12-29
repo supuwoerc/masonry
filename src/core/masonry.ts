@@ -18,12 +18,21 @@ export interface GridItem {
   y: number
 }
 
+export interface ClickEvent {
+  item: GridItem
+  index: number
+  row: number
+  column: number
+  event: MouseEvent
+}
+
 export interface Config {
   canvas: HTMLCanvasElement
   items: Array<CanvasImageSource>
   style: GridItemStyle
   onReady?: (instance: Masonry) => void
   onError?: (err: unknown) => void
+  onClick?: (event: ClickEvent) => void
 }
 
 export class Masonry {
@@ -55,9 +64,13 @@ export class Masonry {
 
   #configValidator = new Validator<Config>(configRules)
 
+  #spatialIndex: Map<string, GridItem[]> = new Map()
+
   onReady: ((instance: Masonry) => void) | null = null
 
   onError = (err: unknown) => console.error(err)
+
+  onClick: ((event: ClickEvent) => void) | null = null
 
   constructor(options: Config) {
     this.#initConfig(options)
@@ -114,6 +127,9 @@ export class Masonry {
     if (options.onReady && isFunction(options.onReady)) {
       this.onReady = options.onReady
     }
+    if (options.onClick && isFunction(options.onClick)) {
+      this.onClick = options.onClick
+    }
   }
 
   #setupCanvas() {
@@ -138,6 +154,20 @@ export class Masonry {
     this.onReady?.(this)
   }
 
+  #buildSpatialIndex() {
+    this.#spatialIndex.clear()
+    const items = flatten(this.#gridItems)
+    for (const item of items) {
+      const gridX = Math.floor(item.x / 50)
+      const gridY = Math.floor(item.y / 50)
+      const key = `${gridX},${gridY}`
+      if (!this.#spatialIndex.has(key)) {
+        this.#spatialIndex.set(key, [])
+      }
+      this.#spatialIndex.get(key)!.push(item)
+    }
+  }
+
   enable(horizontal = false, vertical = false) {
     this.#disabled.horizontal = horizontal
     this.#disabled.vertical = vertical
@@ -155,6 +185,89 @@ export class Masonry {
   destroy() {
     this.#unbindEvent()
     this.clear()
+  }
+
+  #getCanvasRelativeCoordinates(event: MouseEvent): { x: number; y: number } {
+    const rect = this.#canvas.getBoundingClientRect()
+    const dpr = window.devicePixelRatio || 1
+    return {
+      x: (event.clientX - rect.left) * dpr,
+      y: (event.clientY - rect.top) * dpr,
+    }
+  }
+
+  #isPointInRoundedRect(
+    pointX: number,
+    pointY: number,
+    rectX: number,
+    rectY: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): boolean {
+    if (pointX < rectX || pointX > rectX + width || pointY < rectY || pointY > rectY + height) {
+      return false
+    }
+    if (radius <= 0) {
+      return true
+    }
+    const corners = [
+      { x: rectX + radius, y: rectY + radius, r: radius },
+      { x: rectX + width - radius, y: rectY + radius, r: radius },
+      { x: rectX + width - radius, y: rectY + height - radius, r: radius },
+      { x: rectX + radius, y: rectY + height - radius, r: radius },
+    ]
+    const isXInner = pointX >= rectX + radius && pointX <= rectX + width - radius
+    const isYInner = pointY >= rectY + radius && pointY <= rectY + height - radius
+    if (isXInner || isYInner) {
+      return true
+    }
+    for (const corner of corners) {
+      const dx = pointX - corner.x
+      const dy = pointY - corner.y
+      if (dx * dx + dy * dy <= radius * radius) {
+        return true
+      }
+    }
+    return false
+  }
+
+  #getItemAtPosition(x: number, y: number): Omit<ClickEvent, 'event'> | null {
+    const gridX = Math.floor(x / this.blockWidth)
+    const gridY = Math.floor(y / this.blockHeight)
+    const candidates: GridItem[] = []
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${gridX + dx},${gridY + dy}`
+        const items = this.#spatialIndex.get(key)
+        if (items) {
+          candidates.push(...items)
+        }
+      }
+    }
+    for (let i = 0; i < candidates.length; i++) {
+      const item = candidates[i]
+      const { x: itemX, y: itemY } = item
+      const width = this.#style.width
+      const height = this.#style.height
+      const radius = this.radius
+      if (x < itemX || x > itemX + width || y < itemY || y > itemY + height) {
+        continue
+      }
+      if (this.#isPointInRoundedRect(x, y, itemX, itemY, width, height, radius)) {
+        const column = Math.floor(itemX / this.blockWidth)
+        const row = Math.floor(itemY / this.blockHeight)
+        const allItems = flatten(this.#gridItems)
+        const globalIndex = allItems.findIndex((it) => it === item)
+        return {
+          item,
+          index: globalIndex,
+          row,
+          column,
+        }
+      }
+    }
+    return null
   }
 
   #isOutOfBounds(x: number, y: number) {
@@ -203,6 +316,19 @@ export class Masonry {
     this.#updateGridPosition(0, -e.deltaY)
   }
 
+  #click(e: MouseEvent) {
+    if (this.onClick) {
+      const { x, y } = this.#getCanvasRelativeCoordinates(e)
+      const clickedItem = this.#getItemAtPosition(x, y)
+      if (clickedItem) {
+        this.onClick({
+          ...clickedItem,
+          event: e,
+        })
+      }
+    }
+  }
+
   get events() {
     return {
       mousedown: this.#mousedown.bind(this),
@@ -210,6 +336,7 @@ export class Masonry {
       mouseleave: this.#mouseleave.bind(this),
       mousemove: this.#mousemove.bind(this),
       wheel: this.#wheel.bind(this),
+      click: this.#click.bind(this),
     }
   }
 
@@ -219,6 +346,7 @@ export class Masonry {
     this.#canvas.addEventListener('mouseleave', this.events.mouseleave)
     this.#canvas.addEventListener('mousemove', this.events.mousemove)
     this.#canvas.addEventListener('wheel', this.events.wheel)
+    this.#canvas.addEventListener('click', this.events.click)
     this.#resizeObserver.observe(this.#canvas)
   }
 
@@ -228,6 +356,7 @@ export class Masonry {
     this.#canvas.removeEventListener('mouseleave', this.events.mouseleave)
     this.#canvas.removeEventListener('mousemove', this.events.mousemove)
     this.#canvas.removeEventListener('wheel', this.events.wheel)
+    this.#canvas.removeEventListener('click', this.events.click)
     this.#resizeObserver.disconnect()
   }
 
@@ -356,5 +485,6 @@ export class Masonry {
         }
       }
     }
+    this.#buildSpatialIndex()
   }
 }

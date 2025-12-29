@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -20,13 +20,29 @@
         height: 100%;
         cursor: pointer;
       }
+      #fps {
+        position: absolute;
+        color: red;
+        z-index: 2;
+        font-size: 22px;
+        top: 8px;
+        left: 8px;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
+    <div id="fps"></div>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
       import { Masonry, FPSCounter } from '/src/index.ts'
+      const fpsContainer = document.getElementById('fps')
+
+      const counter = new FPSCounter((fps) => {
+        fpsContainer.innerHTML = `FPS:${fps}`
+      })
+      document.addEventListener('dblclick', () => counter.toggle())
+
       const canvas = document.getElementById('canvas')
       const urls = [
         'https://images.pexels.com/photos/3538558/pexels-photo-3538558.jpeg',
@@ -77,10 +93,8 @@
           console.log(ins)
         },
         onError: (error) => console.error('masonry error:', error),
+        onClick: (e) => console.log('masonry click:', e),
       })
-
-      const counter = new FPSCounter()
-      document.addEventListener('dblclick', () => counter.toggle())
     </script>
   </body>
 </html>
