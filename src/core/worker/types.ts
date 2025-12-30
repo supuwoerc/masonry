@@ -1,10 +1,12 @@
-import type { WorkerErrorCode, WorkerMessageType } from '../constant'
-import type { GridItem, GridItemStyle } from '../masonry'
+import type { WorkerMessageType } from '../constant'
+import type { GridItem, GridItemStyle } from '../types'
 
-export interface WorkerMessage<T = unknown> {
+export type MessagePayload = InitPayload | RenderPayload | UpdatePositionPayload | Error | null
+
+export interface WorkerMessage<T = MessagePayload> {
+  id: string
   type: WorkerMessageType
   payload: T
-  id?: string
   timestamp: number
 }
 
@@ -28,29 +30,4 @@ export interface UpdatePositionPayload {
     horizontal: boolean
     vertical: boolean
   }
-}
-
-export type ErrorDetails = string | Error | Record<string, unknown>
-
-export interface ErrorPayload {
-  code: WorkerErrorCode
-  message: string
-  details?: ErrorDetails
-}
-
-interface PerformanceMemory {
-  usedJSHeapSize: number
-  totalJSHeapSize: number
-  jsHeapSizeLimit: number
-}
-
-export interface PerformanceWithMemory extends Performance {
-  memory?: PerformanceMemory
-}
-
-export interface PerformanceReport {
-  renderTime: number
-  fps: number
-  memoryUsage?: number
-  timestamp: number
 }

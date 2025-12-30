@@ -12,6 +12,9 @@ export default antfu(
       'curly': ['error', 'all'],
       'antfu/consistent-list-newline': 'off',
       'style/member-delimiter-style': 'off',
+      'style/operator-linebreak': 'off',
+      'regexp/no-unused-capturing-group': 'off',
+      'no-new': 'off',
     },
   },
   {

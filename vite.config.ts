@@ -22,6 +22,9 @@ export default defineConfig({
       },
     },
   },
+  worker: {
+    format: 'iife',
+  },
   plugins: [
     dts({
       insertTypesEntry: true,

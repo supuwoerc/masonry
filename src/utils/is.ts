@@ -13,7 +13,6 @@ import {
   isUndefined,
 } from 'lodash-es'
 
-// eslint-disable-next-line style/operator-linebreak
 export type CheckableType =
   | 'string'
   | 'number'

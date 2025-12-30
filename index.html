@@ -35,7 +35,7 @@
     <div id="fps"></div>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { Masonry, FPSCounter } from '/src/index.ts'
+      import { MasonryBuilder, FPSCounter } from '/src/index.ts'
       const fpsContainer = document.getElementById('fps')
 
       const counter = new FPSCounter((fps) => {
@@ -79,22 +79,37 @@
 
       const images = await Promise.all(imagePromises)
 
-      const masonryInstance = new Masonry({
-        canvas,
-        items: images,
-        style: {
+      // {
+      //   canvas,
+      //   items: images,
+      //   style: {
+      //     width: 200,
+      //     height: 300,
+      //     gap: 10,
+      //     radius: 10,
+      //   },
+      //   onReady: (ins) => {
+      //     console.log('masonry is ready!')
+      //     console.log(ins)
+      //   },
+      //   onError: (error) => console.error('masonry error:', error),
+      //   onClick: (e) => console.log('masonry click:', e),
+      // }
+
+      new MasonryBuilder()
+        .withCore(canvas, images, {
           width: 200,
           height: 300,
           gap: 10,
           radius: 10,
-        },
-        onReady: (ins) => {
-          console.log('masonry is ready!')
-          console.log(ins)
-        },
-        onError: (error) => console.error('masonry error:', error),
-        onClick: (e) => console.log('masonry click:', e),
-      })
+        })
+        .withEvents({
+          onReady: (ins) => {
+            console.log('masonry is ready!')
+            console.log(ins)
+          },
+        })
+        .build()
     </script>
   </body>
 </html>
