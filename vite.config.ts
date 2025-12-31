@@ -24,6 +24,12 @@ export default defineConfig({
   },
   worker: {
     format: 'iife',
+    rollupOptions: {
+      output: {
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+      },
+    },
   },
   plugins: [
     dts({
