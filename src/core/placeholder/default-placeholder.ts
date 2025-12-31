@@ -1,4 +1,12 @@
-import type { PlaceholderOptions, PlaceholderRenderer } from '../types'
+import type { PlaceholderRenderer } from '../types'
+
+export interface PlaceholderOptions {
+  backgroundColor?: string
+  borderColor?: string
+  borderWidth?: number
+  showIndex?: boolean
+  gradient?: boolean
+}
 
 export class DefaultPlaceholderRenderer implements PlaceholderRenderer {
   private options: Required<PlaceholderOptions>

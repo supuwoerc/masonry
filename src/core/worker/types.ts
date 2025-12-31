@@ -1,29 +1,50 @@
-import type { WorkerMessageType } from '../constant'
-import type { GridItem, GridItemStyle } from '../types'
+import type { WorkerConfiguration } from './offscreen-canvas'
 
-export type MessagePayload = InitPayload | RenderPayload | UpdatePositionPayload | Error | null
+export enum MessageType {
+  Ready = 'ready',
+  Setup = 'setup',
+  SetupResponse = 'setup-response',
+  Render = 'render',
+  RenderResponse = 'render-response',
+  Update = 'update',
+  UpdateResponse = 'update-response',
+  Clear = 'clear',
+  ClearResponse = 'clear-reponse',
+  Error = 'error',
+}
 
-export interface WorkerMessage<T = MessagePayload> {
+export type MessagePayload = SetupPayload | RenderPayload | UpdatePayload | Error | null
+
+export interface Message<T = MessagePayload> {
   id: string
-  type: WorkerMessageType
+  from?: string
+  type: MessageType
   payload: T
   timestamp: number
 }
 
-export interface InitPayload {
-  canvas: OffscreenCanvas
-  style: GridItemStyle
-  width: number
-  height: number
+export interface SetupPayload {
+  offscreenCanvas: OffscreenCanvas
+  clientWidth: number
+  clientHeight: number
+  config: WorkerConfiguration
   dpr: number
 }
 
+export interface GridItem {
+  id: string
+  url: string
+  image: HTMLImageElement | null
+  status: 'loading' | 'failed' | 'loaded'
+  x: number
+  y: number
+}
+
 export interface RenderPayload {
-  items: GridItem[][]
   clearBeforeRender?: boolean
 }
 
-export interface UpdatePositionPayload {
+export interface UpdatePayload {
   deltaX: number
   deltaY: number
   disabled: {

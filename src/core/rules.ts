@@ -32,6 +32,22 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
     allowEmpty: true,
   },
   {
+    key: 'core.limit',
+    required: false,
+    type: 'number',
+    min: 1,
+    message: 'the limit must be a number greater than 0',
+    allowEmpty: true,
+  },
+  {
+    key: 'core.timeout',
+    required: false,
+    type: 'number',
+    min: 1,
+    message: 'the timeout must be a number greater than 0',
+    allowEmpty: true,
+  },
+  {
     key: 'core.style.width',
     required: true,
     type: 'number',

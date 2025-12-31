@@ -11,8 +11,14 @@ export class MasonryBuilder {
   #config: Partial<MasonryConfiguration> = {}
   #validator = new Validator<MasonryConfiguration>(configurationRules)
 
-  withCore(canvas: HTMLCanvasElement, items: CanvasImageSource[], style: GridItemStyle) {
-    this.#config.core = { canvas, items, style }
+  withCore(
+    canvas: HTMLCanvasElement,
+    items: string[],
+    style: GridItemStyle,
+    limit = 6,
+    timeout = 3000,
+  ) {
+    this.#config.core = { canvas, items, style, limit, timeout }
     return this
   }
 
@@ -38,16 +44,13 @@ export class MasonryBuilder {
     return this
   }
 
-  withPlaceholder(config: MasonryConfiguration['placeholder']) {
-    this.#config.placeholder = {
-      renderer: new DefaultPlaceholderRenderer({
-        backgroundColor: '#f5f5f5',
-        borderColor: '#d0d0d0',
-        showIndex: false,
-      }),
-      ...(this.#config.placeholder || {}),
-      ...config,
-    }
+  withPlaceholder(config: MasonryConfiguration['placeholderRenderer']) {
+    const defaultRenderer = new DefaultPlaceholderRenderer({
+      backgroundColor: '#f5f5f5',
+      borderColor: 'red',
+      showIndex: false,
+    })
+    this.#config.placeholderRenderer = config ?? defaultRenderer
     return this
   }
 

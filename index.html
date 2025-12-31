@@ -61,43 +61,9 @@
         'https://images.pexels.com/photos/6073519/pexels-photo-6073519.jpeg',
         'https://images.pexels.com/photos/417014/pexels-photo-417014.jpeg',
       ]
-      const imagePromises = []
-      for (let index = 0; index < 30; index++) {
-        const p = new Promise((resolve, reject) => {
-          const img = new Image(200, 300)
-          img.onload = () => {
-            resolve(img)
-          }
-          img.onerror = (e) => {
-            reject(e)
-          }
-          // img.src = `https://lipsum.app/id/${index + 1}/200x300`;
-          img.src = urls[index % urls.length]
-        })
-        imagePromises.push(p)
-      }
-
-      const images = await Promise.all(imagePromises)
-
-      // {
-      //   canvas,
-      //   items: images,
-      //   style: {
-      //     width: 200,
-      //     height: 300,
-      //     gap: 10,
-      //     radius: 10,
-      //   },
-      //   onReady: (ins) => {
-      //     console.log('masonry is ready!')
-      //     console.log(ins)
-      //   },
-      //   onError: (error) => console.error('masonry error:', error),
-      //   onClick: (e) => console.log('masonry click:', e),
-      // }
 
       new MasonryBuilder()
-        .withCore(canvas, images, {
+        .withCore(canvas, urls, {
           width: 200,
           height: 300,
           gap: 10,

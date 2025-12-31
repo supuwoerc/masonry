@@ -14,5 +14,6 @@ export class MasonryError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'MasonryError'
+    Object.setPrototypeOf(this, MasonryError.prototype)
   }
 }
