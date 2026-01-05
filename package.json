@@ -36,7 +36,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@supuwoerc/toolkit": "^1.0.0",
+    "@supuwoerc/toolkit": "^1.0.1",
     "lodash-es": "^4.17.21",
     "nanoid": "^5.1.6",
     "p-limit": "^7.2.0",

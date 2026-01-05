@@ -10,3 +10,7 @@ export const defaultPlaceholderRenderer = new DefaultPlaceholderRenderer({
   borderColor: 'red',
   showIndex: false,
 })
+
+export const DefaultConcurrency = 1
+
+export const DefaultTimeout = 1000

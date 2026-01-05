@@ -1,26 +1,21 @@
-import type { LimitFunction } from 'p-limit'
 import type { MasonryConfiguration } from '../masonry'
-import type { Core, PlaceholderRenderer } from '../types'
+import type { Core, Interaction } from '../types'
 import type { GridItem, Message, MessagePayload, RenderPayload, SetupPayload } from './types'
-import { allSettledWithResults, Queue, withTimeout } from '@supuwoerc/toolkit'
-import { isError, isUndefined, toString } from 'lodash-es'
+import { Queue } from '@supuwoerc/toolkit'
+import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
-import pLimit from 'p-limit'
 import { MasonryError } from '../error'
 import { MessageType } from './types'
 
-export interface WorkerConfiguration extends Omit<MasonryConfiguration, 'core'> {
+export interface WorkerConfiguration extends Omit<
+  MasonryConfiguration,
+  'core' | 'interaction' | 'loader' | 'placeholderRenderer' | 'events'
+> {
   core: Omit<Core, 'canvas'>
-  placeholderRenderer: PlaceholderRenderer
+  interaction?: Omit<Interaction, 'onClick'>
 }
 
-const DefaultConcurrency = 6
-const DefaultTimeout = 1000
-
 class OffscreenCanvasWorker {
-  #promiseLimit!: LimitFunction
-  #timeout!: number
-
   #canvas: OffscreenCanvas | null = null
   #context: OffscreenCanvasRenderingContext2D | null = null
   #clientWidth = 0
@@ -32,30 +27,15 @@ class OffscreenCanvasWorker {
   #columns = 0
   #rows = 0
 
-  #pagination = {
-    page: 1,
-    loading: false,
-    hasMore: true,
-  }
-
   #allItems: GridItem[] = []
 
   #queue = new Queue<() => Promise<void | (() => void)>>()
 
-  get isLoaderMode() {
-    return !isUndefined(this.#config?.loader)
-  }
+  #isRunning = false
 
   constructor() {
     this.#setupMessageHandler()
     this.#sendMessage(MessageType.Ready, null)
-  }
-
-  async #runTask() {
-    while (this.#queue.size > 0) {
-      const task = this.#queue.dequeue()
-      await task()
-    }
   }
 
   #setupMessageHandler(): void {
@@ -104,12 +84,18 @@ class OffscreenCanvasWorker {
       this.#context.imageSmoothingEnabled = true
       this.#context.imageSmoothingQuality = 'high'
       this.#config = payload.config
-      this.#promiseLimit = pLimit(Math.max(DefaultConcurrency, payload.config.core.limit ?? 1))
-      this.#timeout = Math.max(DefaultTimeout, payload.config.core.timeout ?? 1000)
       this.#calculateSize()
-      this.#allItems = this.#urlToGridItems(this.#config.core.items ?? [])
-      this.#addLoadImageTask(this.#config.core.items ?? [])
+      const gridItems = this.#urlToGridItems(this.#config.core.items ?? [])
+      this.#allItems = gridItems
       this.#sendMessage(MessageType.SetupResponse, null, from)
+      this.#sendMessage(
+        MessageType.Modify,
+        gridItems.map((item) => ({
+          id: item.id,
+          url: item.url,
+        })),
+        from,
+      )
     } catch (error) {
       this.#sendError(error)
     }
@@ -133,51 +119,10 @@ class OffscreenCanvasWorker {
     // }
   }
 
-  #loadImage(url: string): Promise<{ image: HTMLImageElement; url: string }> {
-    return new Promise((resolve, reject) => {
-      const image = new Image()
-      image.crossOrigin = 'anonymous'
-      image.onload = () => {
-        resolve({ image, url })
-      }
-      image.onerror = (error) => {
-        reject(error)
-      }
-      image.src = url
-    })
-  }
-
-  #modifyGridItem(url: string, image?: HTMLImageElement) {
-    const target = this.#allItems.filter((item) => item.url === url)
-    target.forEach((item) => {
-      if (image) {
+  #modifyGridItem(url: string, image: ImageBitmap) {
+    this.#allItems.forEach((item) => {
+      if (item.url === url) {
         item.image = image
-      }
-      item.status = image ? 'loaded' : 'failed'
-    })
-  }
-
-  #addLoadImageTask(urls: string[]) {
-    if (urls.length === 0) {
-      return
-    }
-    const tasks = urls.map((url) => {
-      return this.#promiseLimit(() => withTimeout(this.#loadImage(url), this.#timeout))
-    })
-    this.#queue.enqueue(async () => {
-      try {
-        const res = await allSettledWithResults(tasks)
-        for (let index = 0; index < res.length; index++) {
-          const element = res[index]
-          if (element.status === 'fulfilled') {
-            this.#modifyGridItem(element.value!.url, element.value!.image)
-          } else {
-            this.#modifyGridItem(element.value!.url, element.value!.image)
-            this.#sendError(element.error ?? 'image load failed')
-          }
-        }
-      } catch (error) {
-        this.#sendError(error)
       }
     })
   }
@@ -188,7 +133,6 @@ class OffscreenCanvasWorker {
         id: nanoid(),
         url: item,
         image: null,
-        status: 'loading',
         x: 0,
         y: 0,
       }
@@ -236,29 +180,6 @@ class OffscreenCanvasWorker {
     //   gridItems.push({ image: source, x, y })
     // }
     return gridItems
-  }
-
-  async #loadMoreItems(): Promise<string[]> {
-    if (!this.#config?.loader || this.#pagination.loading || !this.#pagination.hasMore) {
-      return []
-    }
-    this.#pagination.loading = true
-    try {
-      const { loadMore, pageSize } = this.#config.loader
-      const list = await loadMore(this.#pagination.page, pageSize)
-      if (list && list.length > 0) {
-        this.#pagination.page++
-      }
-      if (list.length < pageSize) {
-        this.#pagination.hasMore = false
-      }
-      return list
-    } catch (error) {
-      this.#sendError(`failed to load more items:${error}`)
-      return []
-    } finally {
-      this.#pagination.loading = false
-    }
   }
 
   #renderGridItems(gridItems: GridItem[]): void {

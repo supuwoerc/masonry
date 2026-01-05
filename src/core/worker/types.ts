@@ -4,6 +4,10 @@ export enum MessageType {
   Ready = 'ready',
   Setup = 'setup',
   SetupResponse = 'setup-response',
+  Modify = 'modify',
+  ModifyResponse = 'modify-response',
+  LoadMore = 'load-more',
+  LoadMoreResponse = 'load-more-response',
   Render = 'render',
   RenderResponse = 'render-response',
   Update = 'update',
@@ -13,7 +17,14 @@ export enum MessageType {
   Error = 'error',
 }
 
-export type MessagePayload = SetupPayload | RenderPayload | UpdatePayload | Error | null
+export type MessagePayload =
+  | SetupPayload
+  | ModifyPayload
+  | ModifyResponsePayload
+  | RenderPayload
+  | UpdatePayload
+  | Error
+  | null
 
 export interface Message<T = MessagePayload> {
   id: string
@@ -34,8 +45,7 @@ export interface SetupPayload {
 export interface GridItem {
   id: string
   url: string
-  image: HTMLImageElement | null
-  status: 'loading' | 'failed' | 'loaded'
+  image: ImageBitmap | null
   x: number
   y: number
 }
@@ -52,3 +62,16 @@ export interface UpdatePayload {
     vertical: boolean
   }
 }
+
+export interface ModifyItem {
+  id: string
+  url: string
+}
+
+export type ModifyPayload = Array<ModifyItem>
+
+export interface ModifyResponseItem extends ModifyItem {
+  image: ImageBitmap
+}
+
+export type ModifyResponsePayload = Array<ModifyResponseItem>
