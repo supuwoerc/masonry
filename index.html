@@ -32,16 +32,12 @@
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <div id="fps"></div>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { MasonryBuilder, FPSCounter } from '/src/index.ts'
-      const fpsContainer = document.getElementById('fps')
+      import { MasonryBuilder, StatsMonitor } from '/src/index.ts'
 
-      const counter = new FPSCounter((fps) => {
-        fpsContainer.innerHTML = `FPS:${fps}`
-      })
-      document.addEventListener('dblclick', () => counter.toggle())
+      const monitor = new StatsMonitor()
+      document.addEventListener('dblclick', () => monitor.toggle())
 
       const canvas = document.getElementById('canvas')
       const urls = [
