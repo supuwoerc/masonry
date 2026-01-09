@@ -1,4 +1,4 @@
-import type { GridItem } from './worker/types'
+import type { GridItem } from './worker/protocol'
 
 export interface GridItemStyle {
   width: number
@@ -17,7 +17,7 @@ export interface ClickEvent {
 
 export interface Core {
   canvas: HTMLCanvasElement
-  items?: string[]
+  items?: string[] // TODO：扩展支持base64 blob等格式
   style: GridItemStyle
   limit?: number
   timeout?: number
@@ -33,10 +33,9 @@ export interface Interaction {
 
 export interface LoadMoreConfig {
   pageSize: number
-  loadMore: (page: number, pageSize: number) => Promise<string[]>
+  loadMore: (page: number, pageSize: number) => Promise<string[]> // TODO:扩展支持base64 blob等响应
 }
 
 export interface PlaceholderRenderer {
-  render: (width: number, height: number, index: number) => CanvasImageSource
-  dispose?: () => void
+  render: (width: number, height: number) => ImageBitmap | Promise<ImageBitmap>
 }

@@ -48,7 +48,6 @@ export class MasonryBuilder {
     const defaultRenderer = new DefaultPlaceholderRenderer({
       backgroundColor: '#f5f5f5',
       borderColor: 'red',
-      showIndex: false,
     })
     this.#config.placeholderRenderer = config ?? defaultRenderer
     return this

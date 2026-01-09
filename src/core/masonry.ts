@@ -1,22 +1,13 @@
-import type { LimitFunction } from 'p-limit'
 import type { Core, Interaction, LoadMoreConfig, PlaceholderRenderer } from './types'
-import type {
-  Message,
-  MessagePayload,
-  ModifyPayload,
-  ModifyResponseItem,
-  SetupPayload,
-} from './worker/types'
-import { allSettledWithResults, Queue, withTimeout } from '@supuwoerc/toolkit'
-import { isFunction, isUndefined } from 'lodash-es'
+import type { Message, MessagePayload, SetupPayload } from './worker/protocol'
+import { isFunction } from 'lodash-es'
 import { nanoid } from 'nanoid'
-import pLimit from 'p-limit'
 import { Validator } from '@/helper/validator'
 import { isCanvasSupported, isWorkerSupported } from '@/utils/canvas'
-import { DefaultConcurrency, DefaultTimeout } from './constant'
+import { defaultPlaceholderRenderer } from './constant'
 import { MasonryError } from './error'
 import { configurationRules } from './rules'
-import { MessageType } from './worker/types'
+import { MessageType } from './worker/protocol'
 import 'path2d-polyfill'
 
 export interface MasonryConfiguration {
@@ -39,17 +30,11 @@ export class Masonry {
 
   #config: MasonryConfiguration
 
+  #placeholder!: ImageBitmap
+
   #useWorker = isWorkerSupported()
 
   #worker: Worker | null = null
-
-  #queue = new Queue<() => Promise<void | (() => void)>>()
-
-  #isRunning = false
-
-  #promiseLimit!: LimitFunction
-
-  #timeout = DefaultTimeout
 
   #pagination = {
     page: 1,
@@ -61,13 +46,9 @@ export class Masonry {
 
   onError: (e: unknown) => void = (e: unknown) => console.error(e)
 
-  get isLoaderMode() {
-    return !isUndefined(this.#config?.loader)
-  }
-
   constructor(config: MasonryConfiguration) {
     if (!isCanvasSupported()) {
-      throw new MasonryError('The current environment does not support the canvas API')
+      throw new MasonryError('the current environment does not support the canvas API')
     }
     const { valid, errors } = this.#validator.validate(config)
     if (!valid) {
@@ -77,9 +58,10 @@ export class Masonry {
     this.#init()
   }
 
-  #init() {
-    this.#promiseLimit = pLimit(Math.max(DefaultConcurrency, this.#config.core.limit ?? 1))
-    this.#timeout = Math.max(DefaultTimeout, this.#config.core.timeout ?? 1000)
+  async #init() {
+    const { width, height } = this.#config.core.style
+    const renderer = this.#config.placeholderRenderer ?? defaultPlaceholderRenderer
+    this.#placeholder = await renderer.render(width, height)
     if (this.#useWorker) {
       this.#initWorker()
     }
@@ -103,17 +85,27 @@ export class Masonry {
           core: {
             items: this.#config.core.items,
             style: this.#config.core.style,
+            limit: this.#config.core.limit,
+            timeout: this.#config.core.timeout,
           },
-          interaction: {
-            disabled: {
-              horizontal: this.#config.interaction?.disabled?.horizontal,
-              vertical: this.#config.interaction?.disabled?.vertical,
-            },
-          },
+          placeholder: this.#placeholder,
         },
         dpr: window.devicePixelRatio || 1,
       }
-      this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas])
+      if (this.#config.interaction) {
+        payload.config.interaction = {
+          disabled: {
+            horizontal: this.#config.interaction?.disabled?.horizontal,
+            vertical: this.#config.interaction?.disabled?.vertical,
+          },
+        }
+      }
+      if (this.#config.loader) {
+        payload.config.loader = {
+          pageSize: this.#config.loader.pageSize,
+        }
+      }
+      this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas, this.#placeholder])
     } catch (error) {
       this.#useWorker = false
       this.#worker = null
@@ -125,18 +117,13 @@ export class Masonry {
     const { type, payload } = event.data
     switch (type) {
       case MessageType.SetupResponse:
-        this.#sendMessage(MessageType.Render, {
-          clearBeforeRender: true,
-        })
         this.onReady?.(this)
-        break
-      case MessageType.Modify:
-        this.#addLoadImageTask(payload as ModifyPayload)
-        this.#runTask()
         break
       case MessageType.Error:
         this.onError(payload)
         break
+      default:
+        throw new MasonryError(`unknown message type: ${type}`)
     }
   }
 
@@ -157,71 +144,6 @@ export class Masonry {
     if (config.events?.onError && isFunction(config.events.onError)) {
       this.onError = config.events.onError
     }
-  }
-
-  async #runTask() {
-    if (!this.#isRunning) {
-      try {
-        this.#isRunning = true
-        while (this.#queue.size > 0) {
-          const task = this.#queue.dequeue()
-          await task?.()
-        }
-      } finally {
-        this.#isRunning = false
-      }
-    }
-  }
-
-  #loadImage(url: string, id: string): Promise<{ image: ImageBitmap; id: string }> {
-    return new Promise((resolve, reject) => {
-      const image = new Image()
-      image.crossOrigin = 'anonymous'
-      image.onload = async () => {
-        const bitmap = await createImageBitmap(image)
-        resolve({ image: bitmap, id })
-      }
-      image.onerror = (error) => {
-        reject(error)
-      }
-      image.src = url
-    })
-  }
-
-  #addLoadImageTask(payload: ModifyPayload) {
-    if (payload.length === 0) {
-      return
-    }
-    this.#queue.enqueue(async () => {
-      try {
-        const res = await allSettledWithResults(
-          payload.map(({ id, url }) => {
-            return this.#promiseLimit(() =>
-              withTimeout(
-                this.#loadImage(url, id),
-                this.#timeout,
-                new MasonryError(`load image ${url} timeout`),
-              ),
-            )
-          }),
-        )
-        for (let index = 0; index < res.length; index++) {
-          const element = res[index]
-          if (element.status === 'fulfilled' && element.value?.image) {
-            const payload: ModifyResponseItem = {
-              id: element.value.id,
-              url: '',
-              image: element.value.image,
-            }
-            this.#sendMessage(MessageType.ModifyResponse, [payload], [payload.image])
-          } else {
-            this.onError(element.error ?? 'image load failed')
-          }
-        }
-      } catch (error) {
-        this.onError(error)
-      }
-    })
   }
 
   async #loadMoreItems(): Promise<string[]> {
