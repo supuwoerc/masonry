@@ -1,8 +1,15 @@
 import type { LimitFunction } from 'p-limit'
 import type { MasonryConfiguration } from '../masonry'
 import type { Core, Interaction, LoadMoreConfig } from '../types'
-import type { GridItem, Message, MessagePayload, RenderPayload, SetupPayload } from './protocol'
-import { allSettledWithResults, Queue, sleep, withTimeout } from '@supuwoerc/toolkit'
+import type {
+  GridItem,
+  Message,
+  MessagePayload,
+  RenderPayload,
+  ResizePayload,
+  SetupPayload,
+} from './protocol'
+import { allSettledWithResults, Queue, withTimeout } from '@supuwoerc/toolkit'
 import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import pLimit from 'p-limit'
@@ -75,6 +82,9 @@ class OffscreenCanvasWorker {
       case MessageType.Render:
         this.#handleRender(message.payload as RenderPayload, message.id)
         break
+      case MessageType.Resize:
+        this.#handleResize(message.payload as ResizePayload, message.id)
+        break
       default:
         throw new MasonryError(`unknown message type: ${message.type}`)
     }
@@ -87,8 +97,8 @@ class OffscreenCanvasWorker {
     const { width: itemWidth, height: itemHeight, gap = 0 } = this.#config.core.style
     this.#blockWidth = itemWidth + gap
     this.#blockHeight = itemHeight + gap
-    this.#columns = Math.floor(this.#clientWidth / this.#blockWidth)
-    this.#rows = Math.floor(this.#clientHeight / this.#blockHeight)
+    this.#columns = Math.ceil(this.#clientWidth / this.#blockWidth)
+    this.#rows = Math.ceil(this.#clientHeight / this.#blockHeight)
   }
 
   #handleSetup(payload: SetupPayload, from: string): void {
@@ -120,6 +130,8 @@ class OffscreenCanvasWorker {
       this.#runTask()
       this.#handleRender({ clearBeforeRender: true }, from)
       this.#sendMessage(MessageType.SetupResponse, null, from)
+      // eslint-disable-next-line no-console
+      console.log(this)
     } catch (error) {
       this.#sendError(error)
     }
@@ -130,10 +142,10 @@ class OffscreenCanvasWorker {
       this.#sendError(new MasonryError('offscreen canvas not initialized or not ready'))
       return
     }
-    if (payload.clearBeforeRender) {
-      this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
-    }
     try {
+      if (payload.clearBeforeRender) {
+        this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
+      }
       const gridItems = await this.#generateGridItems(this.#allItems)
       this.#renderGridItems(gridItems)
       this.#sendMessage(MessageType.RenderResponse, null, from)
@@ -171,7 +183,11 @@ class OffscreenCanvasWorker {
       const y = row * this.#blockHeight
       let source: GridItem
       if (i < availableItems.length) {
-        source = availableItems[i]
+        source = {
+          ...availableItems[i],
+          x,
+          y,
+        }
       } else {
         source = {
           id: nanoid(),
@@ -233,6 +249,24 @@ class OffscreenCanvasWorker {
     }
   }
 
+  async #handleResize(payload: ResizePayload, from: string) {
+    if (!this.#context) {
+      this.#sendError(new MasonryError('offscreen canvas not initialized or not ready'))
+      return
+    }
+    try {
+      this.#canvas.width = payload.clientWidth * payload.dpr
+      this.#canvas.height = payload.clientHeight * payload.dpr
+      this.#clientWidth = payload.clientWidth
+      this.#clientHeight = payload.clientHeight
+      this.#context.scale(payload.dpr, payload.dpr)
+      this.#calculateSize()
+      this.#handleRender({ clearBeforeRender: true }, from)
+    } catch (error) {
+      this.#sendError(error)
+    }
+  }
+
   #sendError(error: unknown) {
     const err = isError(error) ? error : new MasonryError(toString(error))
     this.#sendMessage(MessageType.Error, err, nanoid())
@@ -272,7 +306,6 @@ class OffscreenCanvasWorker {
     const bitmap = await createImageBitmap(blob)
     const modifyTarget = this.#allItems.find((item) => item.id === id)
     modifyTarget && (modifyTarget.image = bitmap)
-    await sleep(5000)
     this.#handleRender({ clearBeforeRender: true }, from)
   }
 

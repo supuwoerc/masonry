@@ -1,5 +1,6 @@
 import type { Core, Interaction, LoadMoreConfig, PlaceholderRenderer } from './types'
-import type { Message, MessagePayload, SetupPayload } from './worker/protocol'
+import type { Message, MessagePayload, ResizePayload, SetupPayload } from './worker/protocol'
+import { debounce } from '@supuwoerc/toolkit'
 import { isFunction } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import { Validator } from '@/helper/validator'
@@ -31,6 +32,8 @@ export class Masonry {
   #config: MasonryConfiguration
 
   #placeholder!: ImageBitmap
+
+  #resizeObserver = new ResizeObserver(() => this.#resize())
 
   #useWorker = isWorkerSupported()
 
@@ -66,6 +69,7 @@ export class Masonry {
       this.#initWorker()
     }
     this.#initEvents(this.#config)
+    this.#initObserver()
   }
 
   async #initWorker() {
@@ -146,6 +150,10 @@ export class Masonry {
     }
   }
 
+  #initObserver() {
+    this.#resizeObserver.observe(this.#config.core.canvas)
+  }
+
   async #loadMoreItems(): Promise<string[]> {
     if (!this.#config?.loader || this.#pagination.loading || !this.#pagination.hasMore) {
       return []
@@ -169,10 +177,20 @@ export class Masonry {
     }
   }
 
+  #resize = debounce(100 / 6, () => {
+    const payload: ResizePayload = {
+      clientWidth: this.#config.core.canvas.clientWidth,
+      clientHeight: this.#config.core.canvas.clientHeight,
+      dpr: window.devicePixelRatio || 1,
+    }
+    this.#sendMessage(MessageType.Resize, payload)
+  })
+
   destroy() {
     if (this.#useWorker && this.#worker) {
       this.#worker.terminate()
       this.#worker = null
     }
+    this.#resizeObserver.disconnect()
   }
 }

@@ -17,6 +17,7 @@ export enum MessageType {
   LoadMoreResponse,
   Render,
   RenderResponse,
+  Resize,
   // Update,
   // UpdateResponse,
   // Clear,
@@ -27,6 +28,7 @@ export enum MessageType {
 export type MessagePayload =
   | SetupPayload
   | RenderPayload
+  | ResizePayload
   | UpdatePayload
   | LoadMorePayload
   | Error
@@ -50,6 +52,12 @@ export interface SetupPayload {
 
 export interface RenderPayload {
   clearBeforeRender?: boolean
+}
+
+export interface ResizePayload {
+  clientWidth: number
+  clientHeight: number
+  dpr: number
 }
 
 export interface UpdatePayload {
