@@ -37,5 +37,6 @@ export interface LoadMoreConfig {
 }
 
 export interface PlaceholderRenderer {
-  render: (width: number, height: number) => ImageBitmap | Promise<ImageBitmap>
+  render: (width: number, height: number, id: string) => ImageBitmap | Promise<ImageBitmap>
+  dispose: () => void
 }

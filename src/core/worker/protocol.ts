@@ -3,7 +3,8 @@ import type { WorkerConfiguration } from './offscreen-canvas'
 export interface GridItem {
   id: string
   url: string
-  image: ImageBitmap
+  image: ImageBitmap | null
+  loading: boolean
   x: number
   y: number
 }
@@ -17,6 +18,8 @@ export enum MessageType {
   LoadMoreResponse,
   Render,
   RenderResponse,
+  RenderLoading,
+  RenderLoadingResponse,
   Resize,
   // Update,
   // UpdateResponse,
@@ -31,6 +34,8 @@ export type MessagePayload =
   | ResizePayload
   | UpdatePayload
   | LoadMorePayload
+  | Array<string>
+  | RenderLoadingResponsePayload
   | Error
   | null
 
@@ -71,4 +76,8 @@ export interface UpdatePayload {
 
 export interface LoadMorePayload {
   page: number
+}
+export interface RenderLoadingResponsePayload {
+  id: string
+  bitmap: ImageBitmap
 }

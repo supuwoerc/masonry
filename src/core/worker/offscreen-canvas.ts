@@ -5,6 +5,7 @@ import type {
   GridItem,
   Message,
   MessagePayload,
+  RenderLoadingResponsePayload,
   RenderPayload,
   ResizePayload,
   SetupPayload,
@@ -29,7 +30,6 @@ export interface WorkerConfiguration extends Omit<
   core: Omit<Core, 'canvas'>
   interaction?: Omit<Interaction, 'onClick'>
   loader?: Omit<LoadMoreConfig, 'loadMore'>
-  placeholder: ImageBitmap
 }
 
 class OffscreenCanvasWorker {
@@ -52,7 +52,7 @@ class OffscreenCanvasWorker {
 
   #allItems: GridItem[] = []
 
-  #queue = new Queue<() => Promise<void | (() => void)>>()
+  #queue = new Queue<(() => void) | (() => Promise<void>)>()
 
   #isRunning = false
 
@@ -81,6 +81,9 @@ class OffscreenCanvasWorker {
         break
       case MessageType.Render:
         this.#handleRender(message.payload as RenderPayload, message.id)
+        break
+      case MessageType.RenderLoadingResponse:
+        this.#handleRenderLoading(message.payload as RenderLoadingResponsePayload, message.id)
         break
       case MessageType.Resize:
         this.#handleResize(message.payload as ResizePayload, message.id)
@@ -129,6 +132,7 @@ class OffscreenCanvasWorker {
       // TODO:首次补充满网格
       this.#runTask()
       this.#handleRender({ clearBeforeRender: true }, from)
+      this.#startAnimationLoop()
       this.#sendMessage(MessageType.SetupResponse, null, from)
       // eslint-disable-next-line no-console
       console.log(this)
@@ -139,22 +143,54 @@ class OffscreenCanvasWorker {
 
   async #handleRender(payload: RenderPayload, from: string) {
     if (!this.#context) {
-      this.#sendError(new MasonryError('offscreen canvas not initialized or not ready'))
       return
     }
     try {
       if (payload.clearBeforeRender) {
         this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
       }
-      const gridItems = await this.#generateGridItems(this.#allItems)
-      this.#renderGridItems(gridItems)
+      this.#allItems = await this.#generateGridItems(this.#allItems)
+      this.#renderGridItems(this.#allItems)
       this.#sendMessage(MessageType.RenderResponse, null, from)
     } catch (error) {
       this.#sendError(error)
     }
   }
 
-  async #generateGridItems(initialItems: GridItem[]): Promise<GridItem[]> {
+  #startAnimationLoop() {
+    const renderFrame = () => {
+      // TODO:只处理可见范围内的元素 & 每一个items绑定不同的动画
+      const loadingItems = this.#allItems.filter((item) => !item.image || item.loading)
+      if (loadingItems.length > 0) {
+        const ids = loadingItems.map((item) => item.id)
+        this.#sendMessage(MessageType.RenderLoading, ids)
+      }
+      requestAnimationFrame(() => {
+        renderFrame()
+      })
+    }
+    renderFrame()
+  }
+
+  async #handleRenderLoading(payload: RenderLoadingResponsePayload, from: string) {
+    if (!this.#context) {
+      return
+    }
+    try {
+      const loadingItems: GridItem[] = []
+      const modify = this.#allItems.find((cell) => cell.id === payload.id)
+      if (modify) {
+        modify.image = payload.bitmap
+        loadingItems.push(modify)
+        this.#renderGridItems(loadingItems)
+        this.#sendMessage(MessageType.RenderResponse, null, from)
+      }
+    } catch (error) {
+      this.#sendError(error)
+    }
+  }
+
+  #generateGridItems(initialItems: GridItem[]): GridItem[] {
     if (!this.#config?.core.style) {
       return []
     }
@@ -192,7 +228,8 @@ class OffscreenCanvasWorker {
         source = {
           id: nanoid(),
           url: '',
-          image: this.#config.placeholder,
+          image: null,
+          loading: true,
           x,
           y,
         }
@@ -208,7 +245,8 @@ class OffscreenCanvasWorker {
       return {
         id: nanoid(),
         url: urls[index],
-        image: this.#config.placeholder,
+        image: null,
+        loading: true,
         x: 0,
         y: 0,
       }
@@ -234,24 +272,27 @@ class OffscreenCanvasWorker {
 
   #renderWithoutRadius(items: GridItem[], width: number, height: number): void {
     for (const item of items) {
-      this.#context?.drawImage(item.image!, item.x, item.y, width, height)
+      if (item.image) {
+        this.#context?.drawImage(item.image, item.x, item.y, width, height)
+      }
     }
   }
 
   #renderWithRadius(items: GridItem[], width: number, height: number, radius: number): void {
     for (const item of items) {
-      this.#context?.save()
-      this.#context?.beginPath()
-      this.#context?.roundRect(item.x, item.y, width, height, radius)
-      this.#context?.clip()
-      this.#context?.drawImage(item.image, item.x, item.y, width, height)
-      this.#context?.restore()
+      if (item.image) {
+        this.#context?.save()
+        this.#context?.beginPath()
+        this.#context?.roundRect(item.x, item.y, width, height, radius)
+        this.#context?.clip()
+        this.#context?.drawImage(item.image, item.x, item.y, width, height)
+        this.#context?.restore()
+      }
     }
   }
 
   async #handleResize(payload: ResizePayload, from: string) {
     if (!this.#context) {
-      this.#sendError(new MasonryError('offscreen canvas not initialized or not ready'))
       return
     }
     try {
@@ -305,7 +346,11 @@ class OffscreenCanvasWorker {
     const blob = await response.blob()
     const bitmap = await createImageBitmap(blob)
     const modifyTarget = this.#allItems.find((item) => item.id === id)
-    modifyTarget && (modifyTarget.image = bitmap)
+    if (modifyTarget) {
+      modifyTarget.image = bitmap
+      modifyTarget.loading = false
+    }
+    // TODO:根据增量渲染
     this.#handleRender({ clearBeforeRender: true }, from)
   }
 

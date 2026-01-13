@@ -1,6 +1,6 @@
 import type { Core, Interaction, LoadMoreConfig, PlaceholderRenderer } from './types'
 import type { Message, MessagePayload, ResizePayload, SetupPayload } from './worker/protocol'
-import { debounce } from '@supuwoerc/toolkit'
+import { debounce, Queue } from '@supuwoerc/toolkit'
 import { isFunction } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import { Validator } from '@/helper/validator'
@@ -31,8 +31,6 @@ export class Masonry {
 
   #config: MasonryConfiguration
 
-  #placeholder!: ImageBitmap
-
   #resizeObserver = new ResizeObserver(() => this.#resize())
 
   #useWorker = isWorkerSupported()
@@ -44,6 +42,10 @@ export class Masonry {
     loading: false,
     hasMore: true,
   }
+
+  #queue = new Queue<(() => void) | (() => Promise<void>)>()
+
+  #isRunning = false
 
   onReady: ((ins: Masonry) => void) | null = null
 
@@ -62,9 +64,6 @@ export class Masonry {
   }
 
   async #init() {
-    const { width, height } = this.#config.core.style
-    const renderer = this.#config.placeholderRenderer ?? defaultPlaceholderRenderer
-    this.#placeholder = await renderer.render(width, height)
     if (this.#useWorker) {
       this.#initWorker()
     }
@@ -92,7 +91,6 @@ export class Masonry {
             limit: this.#config.core.limit,
             timeout: this.#config.core.timeout,
           },
-          placeholder: this.#placeholder,
         },
         dpr: window.devicePixelRatio || 1,
       }
@@ -109,7 +107,7 @@ export class Masonry {
           pageSize: this.#config.loader.pageSize,
         }
       }
-      this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas, this.#placeholder])
+      this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas])
     } catch (error) {
       this.#useWorker = false
       this.#worker = null
@@ -123,12 +121,33 @@ export class Masonry {
       case MessageType.SetupResponse:
         this.onReady?.(this)
         break
+      case MessageType.RenderLoading:
+        this.#handleRenderLoading(payload as Array<string>)
+        this.#runTask()
+        break
       case MessageType.Error:
         this.onError(payload)
         break
       default:
         throw new MasonryError(`unknown message type: ${type}`)
     }
+  }
+
+  #handleRenderLoading(ids: Array<string>) {
+    this.#queue.enqueue(async () => {
+      try {
+        const renderer = this.#config.placeholderRenderer ?? defaultPlaceholderRenderer
+        const { width, height } = this.#config.core.style
+        this.#queue.enqueue(async () => {
+          for (const id of ids) {
+            const bitmap = await renderer.render(width, height, id)
+            this.#sendMessage(MessageType.RenderLoadingResponse, { bitmap, id }, [bitmap])
+          }
+        })
+      } catch (error) {
+        this.onError(error)
+      }
+    })
   }
 
   #sendMessage(type: MessageType, payload: MessagePayload, transfer?: Transferable[]) {
@@ -186,11 +205,26 @@ export class Masonry {
     this.#sendMessage(MessageType.Resize, payload)
   })
 
+  async #runTask() {
+    if (!this.#isRunning) {
+      try {
+        this.#isRunning = true
+        while (this.#queue.size > 0) {
+          const task = this.#queue.dequeue()
+          await task?.()
+        }
+      } finally {
+        this.#isRunning = false
+      }
+    }
+  }
+
   destroy() {
     if (this.#useWorker && this.#worker) {
       this.#worker.terminate()
       this.#worker = null
     }
     this.#resizeObserver.disconnect()
+    this.#config.placeholderRenderer?.dispose()
   }
 }
