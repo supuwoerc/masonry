@@ -10,7 +10,7 @@ import type {
   ResizePayload,
   SetupPayload,
 } from './protocol'
-import { allSettledWithResults, Queue, withTimeout } from '@supuwoerc/toolkit'
+import { allSettledWithResults, Queue, sleep, withTimeout } from '@supuwoerc/toolkit'
 import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import pLimit from 'p-limit'
@@ -343,6 +343,7 @@ class OffscreenCanvasWorker {
     if (!response.ok) {
       throw new MasonryError(`load image error! status: ${response.status}`)
     }
+    await sleep(5000000)
     const blob = await response.blob()
     const bitmap = await createImageBitmap(blob)
     const modifyTarget = this.#allItems.find((item) => item.id === id)

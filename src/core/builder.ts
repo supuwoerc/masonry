@@ -4,7 +4,7 @@ import { merge } from 'lodash-es'
 import { Validator } from '@/helper/validator'
 import { MasonryError } from './error'
 import { Masonry } from './masonry'
-import { DefaultPlaceholderRenderer } from './placeholder/default-placeholder'
+import { SpinPlaceholderRenderer } from './placeholder/spin-placeholder'
 import { configurationRules } from './rules'
 
 export class MasonryBuilder {
@@ -45,10 +45,7 @@ export class MasonryBuilder {
   }
 
   withPlaceholder(config: MasonryConfiguration['placeholderRenderer']) {
-    const defaultRenderer = new DefaultPlaceholderRenderer({
-      backgroundColor: '#f5f5f5',
-      borderColor: 'red',
-    })
+    const defaultRenderer = new SpinPlaceholderRenderer()
     this.#config.placeholderRenderer = config ?? defaultRenderer
     return this
   }

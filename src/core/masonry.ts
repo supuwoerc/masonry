@@ -128,8 +128,6 @@ export class Masonry {
       case MessageType.Error:
         this.onError(payload)
         break
-      default:
-        throw new MasonryError(`unknown message type: ${type}`)
     }
   }
 
@@ -141,7 +139,9 @@ export class Masonry {
         this.#queue.enqueue(async () => {
           for (const id of ids) {
             const bitmap = await renderer.render(width, height, id)
-            this.#sendMessage(MessageType.RenderLoadingResponse, { bitmap, id }, [bitmap])
+            if (bitmap.width > 0 && bitmap.height > 0) {
+              this.#sendMessage(MessageType.RenderLoadingResponse, { bitmap, id }, [bitmap])
+            }
           }
         })
       } catch (error) {
