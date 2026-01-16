@@ -11,14 +11,8 @@ export class MasonryBuilder {
   #config: Partial<MasonryConfiguration> = {}
   #validator = new Validator<MasonryConfiguration>(configurationRules)
 
-  withCore(
-    canvas: HTMLCanvasElement,
-    items: string[],
-    style: GridItemStyle,
-    limit = 6,
-    timeout = 3000,
-  ) {
-    this.#config.core = { canvas, items, style, limit, timeout }
+  withCore(canvas: HTMLCanvasElement, items: string[], style: GridItemStyle) {
+    this.#config.core = { canvas, items, style }
     return this
   }
 

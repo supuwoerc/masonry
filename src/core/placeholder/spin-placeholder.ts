@@ -54,6 +54,16 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     this.#cache.clear()
   }
 
+  remove(id: string) {
+    const state = this.#cache.get(id)
+    if (state) {
+      state.canvas.width = 0
+      state.canvas.height = 0
+      state.bitmap.close()
+    }
+    this.#cache.delete(id)
+  }
+
   #calculateCanvasSize(width: number, height: number, dpr: number) {
     return {
       cssWidth: width,

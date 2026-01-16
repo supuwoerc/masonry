@@ -4,7 +4,7 @@ export interface GridItem {
   id: string
   url: string
   image: ImageBitmap | null
-  loading: boolean
+  status: 'loading' | 'loaded'
   x: number
   y: number
 }
@@ -12,32 +12,21 @@ export interface GridItem {
 export enum MessageType {
   Setup,
   SetupResponse,
-  // Modify,
-  // ModifyResponse,
   LoadMore,
   LoadMoreResponse,
   Render,
-  RenderResponse,
   RenderLoading,
   RenderLoadingResponse,
   Resize,
-  // Update,
-  // UpdateResponse,
-  // Clear,
-  // ClearResponse,
+  RemoveLoading,
   Error,
 }
 
-export type MessagePayload =
-  | SetupPayload
-  | RenderPayload
-  | ResizePayload
-  | UpdatePayload
-  | LoadMorePayload
-  | Array<string>
-  | RenderLoadingResponsePayload
-  | Error
-  | null
+export type RequestPayload = SetupPayload | ResizePayload | Array<string> | string
+
+export type ResponsePayload = RenderLoadingResponsePayload | Error | null | LoadMoreResponsePayload
+
+export type MessagePayload = RequestPayload | ResponsePayload
 
 export interface Message<T = MessagePayload> {
   id: string
@@ -55,8 +44,10 @@ export interface SetupPayload {
   dpr: number
 }
 
-export interface RenderPayload {
-  clearBeforeRender?: boolean
+export interface LoadMoreResponsePayload {
+  page: number
+  hasMore: boolean
+  data: Array<string>
 }
 
 export interface ResizePayload {
@@ -65,18 +56,6 @@ export interface ResizePayload {
   dpr: number
 }
 
-export interface UpdatePayload {
-  deltaX: number
-  deltaY: number
-  disabled: {
-    horizontal: boolean
-    vertical: boolean
-  }
-}
-
-export interface LoadMorePayload {
-  page: number
-}
 export interface RenderLoadingResponsePayload {
   id: string
   bitmap: ImageBitmap

@@ -1,5 +1,11 @@
 import type { Core, Interaction, LoadMoreConfig, PlaceholderRenderer } from './types'
-import type { Message, MessagePayload, ResizePayload, SetupPayload } from './worker/protocol'
+import type {
+  LoadMoreResponsePayload,
+  Message,
+  MessagePayload,
+  ResizePayload,
+  SetupPayload,
+} from './worker/protocol'
 import { debounce, Queue } from '@supuwoerc/toolkit'
 import { isFunction } from 'lodash-es'
 import { nanoid } from 'nanoid'
@@ -47,6 +53,8 @@ export class Masonry {
 
   #isRunning = false
 
+  #placeholderRenderer: PlaceholderRenderer = defaultPlaceholderRenderer
+
   onReady: ((ins: Masonry) => void) | null = null
 
   onError: (e: unknown) => void = (e: unknown) => console.error(e)
@@ -64,11 +72,12 @@ export class Masonry {
   }
 
   async #init() {
+    this.#initPlaceholderRenderer(this.#config)
+    this.#initEvents(this.#config)
+    this.#initObserver()
     if (this.#useWorker) {
       this.#initWorker()
     }
-    this.#initEvents(this.#config)
-    this.#initObserver()
   }
 
   async #initWorker() {
@@ -79,7 +88,9 @@ export class Masonry {
       const canvas = this.#config.core.canvas
       const offscreenCanvas = canvas.transferControlToOffscreen()
       this.#worker.onmessage = this.#handleWorkerMessage.bind(this)
-      this.#worker.onerror = this.onError.bind(this)
+      this.#worker.onerror = (e: Event) => {
+        this.onError(`there is an error with your worker:${JSON.stringify(e)}`)
+      }
       const payload: SetupPayload = {
         offscreenCanvas,
         clientWidth: canvas.clientWidth,
@@ -121,9 +132,16 @@ export class Masonry {
       case MessageType.SetupResponse:
         this.onReady?.(this)
         break
+      case MessageType.LoadMore:
+        this.#handleLoadMoreTask()
+        this.#runTask()
+        break
       case MessageType.RenderLoading:
         this.#handleRenderLoading(payload as Array<string>)
         this.#runTask()
+        break
+      case MessageType.RemoveLoading:
+        this.#placeholderRenderer.remove(payload as string)
         break
       case MessageType.Error:
         this.onError(payload)
@@ -132,22 +150,22 @@ export class Masonry {
   }
 
   #handleRenderLoading(ids: Array<string>) {
-    this.#queue.enqueue(async () => {
-      try {
-        const renderer = this.#config.placeholderRenderer ?? defaultPlaceholderRenderer
-        const { width, height } = this.#config.core.style
-        this.#queue.enqueue(async () => {
-          for (const id of ids) {
-            const bitmap = await renderer.render(width, height, id)
+    if (ids.length > 0) {
+      this.#queue.enqueue(async () => {
+        try {
+          const { width, height } = this.#config.core.style
+          const tasks = ids.map(async (id) => {
+            const bitmap = await this.#placeholderRenderer.render(width, height, id)
             if (bitmap.width > 0 && bitmap.height > 0) {
               this.#sendMessage(MessageType.RenderLoadingResponse, { bitmap, id }, [bitmap])
             }
-          }
-        })
-      } catch (error) {
-        this.onError(error)
-      }
-    })
+          })
+          await Promise.all(tasks)
+        } catch (error) {
+          this.onError(error)
+        }
+      })
+    }
   }
 
   #sendMessage(type: MessageType, payload: MessagePayload, transfer?: Transferable[]) {
@@ -158,6 +176,12 @@ export class Masonry {
       timestamp: Date.now(),
     }
     this.#worker?.postMessage(message, transfer ?? [])
+  }
+
+  #initPlaceholderRenderer(config: MasonryConfiguration) {
+    if (config.placeholderRenderer) {
+      this.#placeholderRenderer = config.placeholderRenderer
+    }
   }
 
   #initEvents(config: MasonryConfiguration) {
@@ -173,27 +197,34 @@ export class Masonry {
     this.#resizeObserver.observe(this.#config.core.canvas)
   }
 
-  async #loadMoreItems(): Promise<string[]> {
-    if (!this.#config?.loader || this.#pagination.loading || !this.#pagination.hasMore) {
-      return []
-    }
-    this.#pagination.loading = true
-    try {
-      const { loadMore, pageSize } = this.#config.loader
-      const list = await loadMore(this.#pagination.page, pageSize)
-      if (list && list.length > 0) {
-        this.#pagination.page++
+  #handleLoadMoreTask() {
+    this.#queue.enqueue(async () => {
+      if (!this.#config?.loader || this.#pagination.loading || !this.#pagination.hasMore) {
+        return
       }
-      if (list.length < pageSize) {
-        this.#pagination.hasMore = false
+      try {
+        this.#pagination.loading = true
+        const { loadMore, pageSize } = this.#config.loader
+        const message: LoadMoreResponsePayload = {
+          page: this.#pagination.page,
+          hasMore: true,
+          data: [],
+        }
+        const list = await loadMore(this.#pagination.page, pageSize)
+        if (list && list.length > 0) {
+          this.#pagination.page++
+        }
+        if (list.length < pageSize) {
+          this.#pagination.hasMore = false
+          message.hasMore = false
+        }
+        this.#sendMessage(MessageType.LoadMoreResponse, message)
+      } catch (error) {
+        this.onError(`failed to load more items:${error}`)
+      } finally {
+        this.#pagination.loading = false
       }
-      return list
-    } catch (error) {
-      this.onError(`failed to load more items:${error}`)
-      return []
-    } finally {
-      this.#pagination.loading = false
-    }
+    })
   }
 
   #resize = debounce(100 / 6, () => {
