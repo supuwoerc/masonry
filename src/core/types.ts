@@ -17,7 +17,7 @@ export interface ClickEvent {
 
 export interface Core {
   canvas: HTMLCanvasElement
-  items?: string[] // TODO：扩展支持base64 blob等格式
+  items?: ImageBitmap[]
   style: GridItemStyle
   limit?: number
   timeout?: number
@@ -33,7 +33,7 @@ export interface Interaction {
 
 export interface LoadMoreConfig {
   pageSize: number
-  loadMore: (page: number, pageSize: number) => Promise<string[]> // TODO:扩展支持base64 blob等响应
+  loadMore: (page: number, pageSize: number) => Promise<ImageBitmap[]>
 }
 
 export interface PlaceholderRenderer {

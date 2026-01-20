@@ -60,22 +60,37 @@
       const urls = Array.from({ length: 10 }).map(
         (_, index) => `https://dummyimage.com/200x300/000000/fff&text=${index}`,
       )
-      // https://dummyimage.com/200x300/000/fff&text=1
 
-      new MasonryBuilder()
-        .withCore(canvas, urls, {
-          width: 200,
-          height: 300,
-          gap: 10,
-          radius: 10,
+      const p = urls.map(async (url) => {
+        const response = await fetch(url)
+        if (!response.ok) {
+          throw new MasonryError(`load image error! status: ${response.status}`)
+        }
+        const blob = await response.blob()
+        const bitmap = await createImageBitmap(blob)
+        return bitmap
+      })
+
+      const bitmapsRequest = Promise.all(p)
+
+      bitmapsRequest
+        .then((bitmaps) => {
+          new MasonryBuilder()
+            .withCore(canvas, bitmaps, {
+              width: 200,
+              height: 300,
+              gap: 10,
+              radius: 10,
+            })
+            .withEvents({
+              onReady: (ins) => {
+                console.log('masonry is ready!')
+                console.log(ins)
+              },
+            })
+            .build()
         })
-        .withEvents({
-          onReady: (ins) => {
-            console.log('masonry is ready!')
-            console.log(ins)
-          },
-        })
-        .build()
+        .catch(alert)
     </script>
   </body>
 </html>

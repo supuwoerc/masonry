@@ -2,7 +2,6 @@ import type { WorkerConfiguration } from './offscreen-canvas'
 
 export interface GridItem {
   id: string
-  url: string
   image: ImageBitmap | null
   status: 'loading' | 'loaded'
   x: number
@@ -47,7 +46,7 @@ export interface SetupPayload {
 export interface LoadMoreResponsePayload {
   page: number
   hasMore: boolean
-  data: Array<string>
+  data: Array<ImageBitmap>
 }
 
 export interface ResizePayload {

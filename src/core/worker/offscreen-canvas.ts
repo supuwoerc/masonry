@@ -11,7 +11,7 @@ import type {
   ResponsePayload,
   SetupPayload,
 } from './protocol'
-import { Queue, sleep, withTimeout } from '@supuwoerc/toolkit'
+import { Queue, withTimeout } from '@supuwoerc/toolkit'
 import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import pLimit from 'p-limit'
@@ -38,6 +38,7 @@ class OffscreenCanvasWorker {
   #context!: OffscreenCanvasRenderingContext2D
   #clientWidth = 0
   #clientHeight = 0
+  #dpr = 1
   #config!: WorkerConfiguration
 
   #blockWidth = 0
@@ -83,6 +84,7 @@ class OffscreenCanvasWorker {
         this.#handleSetup(payload as SetupPayload)
         break
       case MessageType.Render:
+        this.#startAnimationLoop()
         this.#handleRender()
         break
       case MessageType.Resize:
@@ -110,13 +112,14 @@ class OffscreenCanvasWorker {
     this.#rows = Math.ceil(this.#clientHeight / this.#blockHeight)
   }
 
-  async #handleSetup(payload: SetupPayload) {
+  #handleSetup(payload: SetupPayload) {
     try {
       this.#canvas = payload.offscreenCanvas
       this.#canvas.width = payload.clientWidth * payload.dpr
       this.#canvas.height = payload.clientHeight * payload.dpr
       this.#clientWidth = payload.clientWidth
       this.#clientHeight = payload.clientHeight
+      this.#dpr = payload.dpr
       this.#context = this.#canvas.getContext('2d')!
       this.#context.scale(payload.dpr, payload.dpr)
       this.#context.imageSmoothingEnabled = true
@@ -128,18 +131,20 @@ class OffscreenCanvasWorker {
       if (this.#config.core.timeout) {
         this.#timeout = Math.max(DefaultTimeout, this.#config.core.timeout)
       }
+      if (this.#config.core.items?.length) {
+        this.#allItems = this.#config.core.items.map((item) => {
+          return {
+            id: nanoid(),
+            image: item,
+            status: 'loaded',
+            x: 0,
+            y: 0,
+          }
+        })
+      }
       this.#calculateSize()
-      this.#generateGridItems()
-      // if ((this.#config.loader?.pageSize ?? 0) > 0) {
-      //   this.#allItems = this.#loadMoreItems()
-      // } else if ((this.#config.core.items?.length ?? 0) > 0) {
-      //   this.#allItems = this.#loadMoreItems(this.#config.core.items!)
-      //   this.#addLoadGridImageTask(this.#allItems)
-      // }
+      this.#generateGridItems(this.#allItems)
       this.#runTask()
-      // TODO:处理网格
-      await this.#handleRender()
-      this.#startAnimationLoop()
       this.#sendMessage(MessageType.SetupResponse, null)
       // eslint-disable-next-line no-console
       console.log(this)
@@ -148,9 +153,10 @@ class OffscreenCanvasWorker {
     }
   }
 
-  async #handleRender() {
+  #handleRender() {
     if (this.#context) {
       try {
+        this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
         this.#renderGridItems(this.#gridItems.flat())
       } catch (error) {
         this.#sendError(error)
@@ -202,16 +208,18 @@ class OffscreenCanvasWorker {
     }
   }
 
-  #generateGridItems() {
+  #generateGridItems(items: GridItem[]) {
     this.#gridItems = Array.from({ length: this.#rows }, (_, row) =>
       Array.from({ length: this.#columns }, (_, column) => {
         const x = column * this.#blockWidth
         const y = row * this.#blockHeight
+        const index = row * this.#columns + column
+        const itemIndex = items.length > 0 ? index % items.length : 0
+        const patch = items[itemIndex] || null
         return {
-          id: nanoid(),
-          url: '',
-          image: null,
-          status: 'loading',
+          id: patch?.id ?? nanoid(),
+          image: patch?.image ?? null,
+          status: patch?.status ?? 'loading',
           x,
           y,
         }
@@ -221,17 +229,13 @@ class OffscreenCanvasWorker {
 
   #loadMoreItems(urls: string[] = []): GridItem[] {
     const length = urls.length > 0 ? urls.length : (this.#config?.loader?.pageSize ?? 0)
-    const result = Array.from({ length }).map((_, index) => {
+    const result = Array.from({ length }).map(() => {
       const item: GridItem = {
         id: nanoid(),
-        url: '',
         image: null,
         status: 'loading',
         x: 0,
         y: 0,
-      }
-      if (urls[index]) {
-        item.url = urls[index]
       }
       return item
     })
@@ -279,13 +283,20 @@ class OffscreenCanvasWorker {
       return
     }
     try {
-      this.#canvas.width = payload.clientWidth * payload.dpr
-      this.#canvas.height = payload.clientHeight * payload.dpr
-      this.#clientWidth = payload.clientWidth
-      this.#clientHeight = payload.clientHeight
-      this.#context.scale(payload.dpr, payload.dpr)
-      this.#calculateSize()
-      this.#handleRender()
+      const { clientHeight, clientWidth, dpr } = payload
+      const w = clientWidth !== this.#clientWidth
+      const h = clientHeight !== this.#clientHeight
+      const d = dpr !== this.#dpr
+      if (w || h || d) {
+        this.#canvas.width = payload.clientWidth * payload.dpr
+        this.#canvas.height = payload.clientHeight * payload.dpr
+        this.#clientWidth = payload.clientWidth
+        this.#clientHeight = payload.clientHeight
+        this.#context.scale(payload.dpr, payload.dpr)
+        this.#calculateSize()
+        this.#generateGridItems([]) // TODO:处理图片数据等
+        // TODO:重新渲染
+      }
     } catch (error) {
       this.#sendError(error)
     }
@@ -326,7 +337,6 @@ class OffscreenCanvasWorker {
     if (!response.ok) {
       throw new MasonryError(`load image error! status: ${response.status}`)
     }
-    await sleep(200000000)
     const blob = await response.blob()
     const bitmap = await createImageBitmap(blob)
     const modify = this.#allItems.filter((item) => item.id === id)
@@ -338,7 +348,6 @@ class OffscreenCanvasWorker {
       this.#sendMessage(MessageType.RemoveLoading, id)
     }
     // TODO:增量渲染 & 背景区域拆分
-    this.#handleRender()
   }
 
   #addLoadGridImageTask(payload: LoadingItem[]) {

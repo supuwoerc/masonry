@@ -11,7 +11,7 @@ export class MasonryBuilder {
   #config: Partial<MasonryConfiguration> = {}
   #validator = new Validator<MasonryConfiguration>(configurationRules)
 
-  withCore(canvas: HTMLCanvasElement, items: string[], style: GridItemStyle) {
+  withCore(canvas: HTMLCanvasElement, items: ImageBitmap[], style: GridItemStyle) {
     this.#config.core = { canvas, items, style }
     return this
   }

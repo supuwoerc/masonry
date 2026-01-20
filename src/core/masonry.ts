@@ -131,6 +131,7 @@ export class Masonry {
     switch (type) {
       case MessageType.SetupResponse:
         this.onReady?.(this)
+        this.#sendMessage(MessageType.Render, null)
         break
       case MessageType.LoadMore:
         this.#handleLoadMoreTask()
@@ -213,6 +214,7 @@ export class Masonry {
         const list = await loadMore(this.#pagination.page, pageSize)
         if (list && list.length > 0) {
           this.#pagination.page++
+          message.data = list
         }
         if (list.length < pageSize) {
           this.#pagination.hasMore = false
