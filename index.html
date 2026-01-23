@@ -76,11 +76,22 @@
       bitmapsRequest
         .then((bitmaps) => {
           new MasonryBuilder()
-            .withCore(canvas, bitmaps, {
-              width: 200,
-              height: 300,
-              gap: 10,
-              radius: 10,
+            .withCore({
+              canvas,
+              style: {
+                width: 200,
+                height: 300,
+                gap: 10,
+                radius: 10,
+              },
+              items: bitmaps,
+              backgroundColor: {
+                type: 'linear',
+                stops: [
+                  { offset: 0, color: 'orange' },
+                  { offset: 1, color: 'green' },
+                ],
+              },
             })
             .withEvents({
               onReady: (ins) => {

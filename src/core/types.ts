@@ -15,8 +15,29 @@ export interface ClickEvent {
   event: MouseEvent
 }
 
+export interface ColorStop {
+  offset: number
+  color: string
+}
+
+export interface GradientBackground {
+  type: 'linear' | 'radial'
+  stops: ColorStop[]
+  linear?: {
+    start: [number, number]
+    end: [number, number]
+  }
+  radial?: {
+    start: [number, number]
+    end: [number, number]
+    r0: number
+    r1: number
+  }
+}
+
 export interface Core {
   canvas: HTMLCanvasElement
+  backgroundColor?: string | GradientBackground
   items?: ImageBitmap[]
   style: GridItemStyle
   limit?: number

@@ -97,6 +97,7 @@ export class Masonry {
         clientHeight: canvas.clientHeight,
         config: {
           core: {
+            backgroundColor: this.#config.core.backgroundColor,
             items: this.#config.core.items,
             style: this.#config.core.style,
             limit: this.#config.core.limit,

@@ -15,6 +15,7 @@ import { Queue, withTimeout } from '@supuwoerc/toolkit'
 import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import pLimit from 'p-limit'
+import { createBackgroundStyle } from '@/helper/background'
 import { MasonryError } from '../error'
 import { DefaultConcurrency, DefaultTimeout } from './constant'
 import { MessageType } from './protocol'
@@ -34,6 +35,8 @@ export interface WorkerConfiguration extends Omit<
 }
 
 class OffscreenCanvasWorker {
+  #backgroundCanvas!: OffscreenCanvas
+  #backgroundContext!: OffscreenCanvasRenderingContext2D
   #canvas!: OffscreenCanvas
   #context!: OffscreenCanvasRenderingContext2D
   #clientWidth = 0
@@ -85,7 +88,7 @@ class OffscreenCanvasWorker {
         break
       case MessageType.Render:
         this.#startAnimationLoop()
-        this.#handleRender()
+        this.#handleRerender()
         break
       case MessageType.Resize:
         this.#handleResize(payload as ResizePayload)
@@ -117,13 +120,18 @@ class OffscreenCanvasWorker {
       this.#canvas = payload.offscreenCanvas
       this.#canvas.width = payload.clientWidth * payload.dpr
       this.#canvas.height = payload.clientHeight * payload.dpr
+      this.#backgroundCanvas = new OffscreenCanvas(this.#canvas.width, this.#canvas.height)
       this.#clientWidth = payload.clientWidth
       this.#clientHeight = payload.clientHeight
       this.#dpr = payload.dpr
       this.#context = this.#canvas.getContext('2d')!
+      this.#backgroundContext = this.#backgroundCanvas.getContext('2d')!
       this.#context.scale(payload.dpr, payload.dpr)
       this.#context.imageSmoothingEnabled = true
       this.#context.imageSmoothingQuality = 'high'
+      this.#backgroundContext.scale(payload.dpr, payload.dpr)
+      this.#backgroundContext.imageSmoothingEnabled = true
+      this.#backgroundContext.imageSmoothingQuality = 'high'
       this.#config = payload.config
       if (this.#config.core.limit) {
         this.#promiseLimit = pLimit(Math.max(DefaultConcurrency, this.#config.core.limit))
@@ -153,10 +161,38 @@ class OffscreenCanvasWorker {
     }
   }
 
-  #handleRender() {
+  #clearBackground() {
+    this.#backgroundContext.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
+  }
+
+  #clear() {
+    this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
+  }
+
+  #handleRenderBackground() {
+    const bgStyle = createBackgroundStyle(
+      this.#backgroundContext,
+      this.#clientWidth,
+      this.#clientHeight,
+      this.#config.core.backgroundColor || '#fff',
+    )
+    this.#backgroundContext.save()
+    this.#backgroundContext.fillStyle = bgStyle
+    this.#backgroundContext.fillRect(0, 0, this.#clientWidth, this.#clientHeight)
+    this.#backgroundContext.restore()
+  }
+
+  #copyBackground() {
+    this.#context.drawImage(this.#backgroundCanvas, 0, 0, this.#clientWidth, this.#clientHeight)
+  }
+
+  #handleRerender() {
     if (this.#context) {
       try {
-        this.#context.clearRect(0, 0, this.#clientWidth, this.#clientHeight)
+        this.#clear()
+        this.#clearBackground()
+        this.#handleRenderBackground()
+        this.#copyBackground()
         this.#renderGridItems(this.#gridItems.flat())
       } catch (error) {
         this.#sendError(error)
@@ -288,14 +324,19 @@ class OffscreenCanvasWorker {
       const h = clientHeight !== this.#clientHeight
       const d = dpr !== this.#dpr
       if (w || h || d) {
+        this.#clear()
         this.#canvas.width = payload.clientWidth * payload.dpr
         this.#canvas.height = payload.clientHeight * payload.dpr
+        this.#backgroundCanvas.width = clientWidth * dpr
+        this.#backgroundCanvas.height = clientHeight * dpr
         this.#clientWidth = payload.clientWidth
         this.#clientHeight = payload.clientHeight
         this.#context.scale(payload.dpr, payload.dpr)
+        this.#backgroundContext.scale(payload.dpr, payload.dpr)
         this.#calculateSize()
         this.#generateGridItems([]) // TODO:处理图片数据等
         // TODO:重新渲染
+        this.#handleRerender()
       }
     } catch (error) {
       this.#sendError(error)

@@ -1,5 +1,5 @@
-import type { PlaceholderRenderer } from '../types'
-import { isString } from 'lodash-es'
+import type { GradientBackground, PlaceholderRenderer } from '../types'
+import { createBackgroundStyle } from '@/helper/background'
 
 interface AnimationState {
   startTime: number
@@ -7,26 +7,6 @@ interface AnimationState {
   bitmap: ImageBitmap
   canvas: HTMLCanvasElement
   dpr: number
-}
-
-interface ColorStop {
-  offset: number
-  color: string
-}
-
-interface GradientBackground {
-  type: 'linear' | 'radial'
-  stops: ColorStop[]
-  linear?: {
-    start: [number, number]
-    end: [number, number]
-  }
-  radial?: {
-    start: [number, number]
-    end: [number, number]
-    r0: number
-    r1: number
-  }
 }
 
 interface PlaceholderOptions {
@@ -71,41 +51,6 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
       physWidth: Math.round(width * dpr),
       physHeight: Math.round(height * dpr),
     }
-  }
-
-  #createBackgroundStyle(
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    bg: string | GradientBackground,
-  ): CanvasFillStrokeStyles['fillStyle'] {
-    if (isString(bg)) {
-      return bg
-    }
-
-    let gradient: CanvasGradient
-    if (bg.type === 'linear') {
-      const [x0, y0] = bg.linear?.start || [0, 0]
-      const [x1, y1] = bg.linear?.end || [width, 0]
-      gradient = ctx.createLinearGradient(x0, y0, x1, y1)
-    } else {
-      const [x0, y0] = bg.radial?.start || [width / 2, height / 2]
-      const [x1, y1] = bg.radial?.end || [x0, y0]
-      gradient = ctx.createRadialGradient(
-        x0,
-        y0,
-        bg.radial?.r0 || 0,
-        x1,
-        y1,
-        bg.radial?.r1 || Math.max(width, height),
-      )
-    }
-
-    bg.stops.forEach((stop) => {
-      gradient.addColorStop(stop.offset, stop.color)
-    })
-
-    return gradient
   }
 
   #drawLoader(ctx: CanvasRenderingContext2D, width: number, height: number, angle: number) {
@@ -183,7 +128,7 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
     // 绘制背景（对齐物理像素）
-    const bgStyle = this.#createBackgroundStyle(
+    const bgStyle = createBackgroundStyle(
       ctx,
       cssWidth,
       cssHeight,

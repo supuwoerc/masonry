@@ -1,5 +1,4 @@
 import type { MasonryConfiguration } from './masonry'
-import type { GridItemStyle } from './types'
 import { merge } from 'lodash-es'
 import { Validator } from '@/helper/validator'
 import { MasonryError } from './error'
@@ -11,8 +10,12 @@ export class MasonryBuilder {
   #config: Partial<MasonryConfiguration> = {}
   #validator = new Validator<MasonryConfiguration>(configurationRules)
 
-  withCore(canvas: HTMLCanvasElement, items: ImageBitmap[], style: GridItemStyle) {
-    this.#config.core = { canvas, items, style }
+  withCore(config: MasonryConfiguration['core']) {
+    this.#config.core = {
+      backgroundColor: '#fff',
+      ...(this.#config.core || {}),
+      ...config,
+    }
     return this
   }
 
