@@ -140,13 +140,14 @@ class OffscreenCanvasWorker {
         this.#timeout = Math.max(DefaultTimeout, this.#config.core.timeout)
       }
       if (this.#config.core.items?.length) {
-        this.#allItems = this.#config.core.items.map((item) => {
+        this.#allItems = this.#config.core.items.map((item, itemIndex) => {
           return {
             id: nanoid(),
             image: item,
             status: 'loaded',
             x: 0,
             y: 0,
+            itemIndex,
           }
         })
       }
@@ -258,6 +259,7 @@ class OffscreenCanvasWorker {
           status: patch?.status ?? 'loading',
           x,
           y,
+          itemIndex,
         }
       }),
     )
@@ -265,13 +267,14 @@ class OffscreenCanvasWorker {
 
   #loadMoreItems(urls: string[] = []): GridItem[] {
     const length = urls.length > 0 ? urls.length : (this.#config?.loader?.pageSize ?? 0)
-    const result = Array.from({ length }).map(() => {
+    const result = Array.from({ length }).map((_, itemIndex) => {
       const item: GridItem = {
         id: nanoid(),
         image: null,
         status: 'loading',
         x: 0,
         y: 0,
+        itemIndex,
       }
       return item
     })

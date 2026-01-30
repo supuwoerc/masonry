@@ -6,6 +6,7 @@ export interface GridItem {
   status: 'loading' | 'loaded'
   x: number
   y: number
+  itemIndex: number
 }
 
 export enum MessageType {
