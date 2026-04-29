@@ -142,9 +142,9 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     const angle = ((elapsed / 1200) * 360) % 360
     this.#drawLoader(ctx, cssWidth, cssHeight, angle)
 
-    // 创建图像位图（保持原始尺寸）
-    const bitmap = await createImageBitmap(state.canvas)
+    state.bitmap.close()
+    state.bitmap = await createImageBitmap(state.canvas)
 
-    return bitmap
+    return state.bitmap
   }
 }

@@ -1,4 +1,3 @@
-import type { LimitFunction } from 'p-limit'
 import type { MasonryConfiguration } from '../masonry'
 import type { Core, Interaction, LoadMoreConfig } from '../types'
 import type {
@@ -11,19 +10,12 @@ import type {
   ResponsePayload,
   SetupPayload,
 } from './protocol'
-import { Queue, withTimeout } from '@supuwoerc/toolkit'
+import { Queue } from '@supuwoerc/toolkit'
 import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
-import pLimit from 'p-limit'
 import { createBackgroundStyle } from '@/helper/background'
 import { MasonryError } from '../error'
-import { DefaultConcurrency, DefaultTimeout } from './constant'
 import { MessageType } from './protocol'
-
-interface LoadingItem {
-  id: string
-  url: string
-}
 
 export interface WorkerConfiguration extends Omit<
   MasonryConfiguration,
@@ -53,13 +45,11 @@ class OffscreenCanvasWorker {
 
   #gridItems: GridItem[][] = []
 
+  #lastLoadingIds = new Set<string>()
+
   #queue = new Queue<(() => void) | (() => Promise<void>)>()
 
   #isRunning = false
-
-  #promiseLimit: LimitFunction | null = null
-
-  #timeout = 0
 
   #pagination = {
     page: 1,
@@ -126,19 +116,13 @@ class OffscreenCanvasWorker {
       this.#dpr = payload.dpr
       this.#context = this.#canvas.getContext('2d')!
       this.#backgroundContext = this.#backgroundCanvas.getContext('2d')!
-      this.#context.scale(payload.dpr, payload.dpr)
+      this.#context.setTransform(payload.dpr, 0, 0, payload.dpr, 0, 0)
       this.#context.imageSmoothingEnabled = true
       this.#context.imageSmoothingQuality = 'high'
-      this.#backgroundContext.scale(payload.dpr, payload.dpr)
+      this.#backgroundContext.setTransform(payload.dpr, 0, 0, payload.dpr, 0, 0)
       this.#backgroundContext.imageSmoothingEnabled = true
       this.#backgroundContext.imageSmoothingQuality = 'high'
       this.#config = payload.config
-      if (this.#config.core.limit) {
-        this.#promiseLimit = pLimit(Math.max(DefaultConcurrency, this.#config.core.limit))
-      }
-      if (this.#config.core.timeout) {
-        this.#timeout = Math.max(DefaultTimeout, this.#config.core.timeout)
-      }
       if (this.#config.core.items?.length) {
         this.#allItems = this.#config.core.items.map((item, itemIndex) => {
           return {
@@ -155,8 +139,6 @@ class OffscreenCanvasWorker {
       this.#generateGridItems(this.#allItems)
       this.#runTask()
       this.#sendMessage(MessageType.SetupResponse, null)
-      // eslint-disable-next-line no-console
-      console.log(this)
     } catch (error) {
       this.#sendError(error)
     }
@@ -203,11 +185,16 @@ class OffscreenCanvasWorker {
 
   #startAnimationLoop() {
     const renderFrame = () => {
-      // TODO:只处理可见范围内的元素
       const loadingItems = this.#gridItems.flat().filter((item) => item.status !== 'loaded')
-      if (loadingItems.length > 0) {
-        const ids = loadingItems.map((item) => item.id)
+      const ids = loadingItems.map((item) => item.id)
+      const idsChanged =
+        ids.length !== this.#lastLoadingIds.size || ids.some((id) => !this.#lastLoadingIds.has(id))
+      if (idsChanged && ids.length > 0) {
+        this.#lastLoadingIds = new Set(ids)
         this.#sendMessage(MessageType.RenderLoading, ids)
+      }
+      if (ids.length === 0) {
+        this.#lastLoadingIds.clear()
       }
       requestAnimationFrame(() => {
         renderFrame()
@@ -221,7 +208,19 @@ class OffscreenCanvasWorker {
       page: payload.page,
       hasMore: payload.hasMore,
     }
-    // TODO:完善加载逻辑
+    if (payload.data.length > 0) {
+      const newItems = payload.data.map((bitmap, i) => ({
+        id: nanoid(),
+        image: bitmap,
+        status: 'loaded' as const,
+        x: 0,
+        y: 0,
+        itemIndex: this.#allItems.length + i,
+      }))
+      this.#allItems.push(...newItems)
+      this.#generateGridItems(this.#allItems)
+      this.#handleRerender()
+    }
   }
 
   async #handleRenderLoading(payload: RenderLoadingResponsePayload) {
@@ -263,25 +262,6 @@ class OffscreenCanvasWorker {
         }
       }),
     )
-  }
-
-  #loadMoreItems(urls: string[] = []): GridItem[] {
-    const length = urls.length > 0 ? urls.length : (this.#config?.loader?.pageSize ?? 0)
-    const result = Array.from({ length }).map((_, itemIndex) => {
-      const item: GridItem = {
-        id: nanoid(),
-        image: null,
-        status: 'loading',
-        x: 0,
-        y: 0,
-        itemIndex,
-      }
-      return item
-    })
-    if (urls.length === 0) {
-      this.#sendMessage(MessageType.LoadMore, null)
-    }
-    return result
   }
 
   #renderGridItems(gridItems: GridItem[]): void {
@@ -334,10 +314,10 @@ class OffscreenCanvasWorker {
         this.#backgroundCanvas.height = clientHeight * dpr
         this.#clientWidth = payload.clientWidth
         this.#clientHeight = payload.clientHeight
-        this.#context.scale(payload.dpr, payload.dpr)
-        this.#backgroundContext.scale(payload.dpr, payload.dpr)
+        this.#context.setTransform(dpr, 0, 0, dpr, 0, 0)
+        this.#backgroundContext.setTransform(dpr, 0, 0, dpr, 0, 0)
         this.#calculateSize()
-        this.#generateGridItems([]) // TODO:处理图片数据等
+        this.#generateGridItems(this.#allItems)
         // TODO:重新渲染
         this.#handleRerender()
       }
@@ -374,47 +354,6 @@ class OffscreenCanvasWorker {
         this.#isRunning = false
       }
     }
-  }
-
-  async #loadGridImage(url: string, id: string): Promise<void> {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new MasonryError(`load image error! status: ${response.status}`)
-    }
-    const blob = await response.blob()
-    const bitmap = await createImageBitmap(blob)
-    const modify = this.#allItems.filter((item) => item.id === id)
-    if (modify.length > 0) {
-      modify.forEach((cell) => {
-        cell.image = bitmap
-        cell.status = 'loaded'
-      })
-      this.#sendMessage(MessageType.RemoveLoading, id)
-    }
-    // TODO:增量渲染 & 背景区域拆分
-  }
-
-  #addLoadGridImageTask(payload: LoadingItem[]) {
-    this.#queue.enqueue(async () => {
-      try {
-        const tasks = payload.map(({ id, url }) => {
-          type TaskFn = () => Promise<void>
-          let task: TaskFn = () => this.#loadGridImage(url, id)
-          if (this.#timeout > 0) {
-            const original = task
-            task = () => withTimeout(original(), this.#timeout, `load image ${url} timeout`)
-          }
-          if (this.#promiseLimit) {
-            const original = task
-            task = () => this.#promiseLimit!(original)
-          }
-          return task()
-        })
-        await Promise.all(tasks)
-      } catch (error) {
-        this.#sendError(error)
-      }
-    })
   }
 }
 

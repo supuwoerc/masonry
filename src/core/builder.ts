@@ -42,8 +42,7 @@ export class MasonryBuilder {
   }
 
   withPlaceholder(config: MasonryConfiguration['placeholderRenderer']) {
-    const defaultRenderer = new SpinPlaceholderRenderer()
-    this.#config.placeholderRenderer = config ?? defaultRenderer
+    this.#config.placeholderRenderer = config ?? new SpinPlaceholderRenderer()
     return this
   }
 

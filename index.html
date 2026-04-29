@@ -34,7 +34,7 @@
     <canvas id="canvas"></canvas>
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
-      import { MasonryBuilder, StatsMonitor } from '/src/index.ts'
+      import { MasonryBuilder, MasonryError, StatsMonitor } from '/src/index.ts'
 
       const monitor = new StatsMonitor('mb')
       document.addEventListener('dblclick', () => monitor.toggle())

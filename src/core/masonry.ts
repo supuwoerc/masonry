@@ -71,7 +71,7 @@ export class Masonry {
     this.#init()
   }
 
-  async #init() {
+  #init() {
     this.#initPlaceholderRenderer(this.#config)
     this.#initEvents(this.#config)
     this.#initObserver()

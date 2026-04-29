@@ -10,9 +10,9 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
   },
   {
     key: 'core',
-    validate: (core) => {
+    validate: (core, config) => {
       const hasItems = core.items && core.items.length > 0
-      const hasLoader = !!core.loader
+      const hasLoader = !!config.loader
       return hasItems || hasLoader
     },
     message: 'either items or loader must be provided',
@@ -104,11 +104,7 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
     validate: (v) => isFunction(v),
     message: 'loadMore must be a function',
   },
-  {
-    key: 'placeholder.renderer',
-    validate: (v) => isFunction(v),
-    message: 'placeholder renderer must be a function',
-  },
+
   {
     key: 'events.onReady',
     validate: (v) => isUndefined(v) || isFunction(v),
