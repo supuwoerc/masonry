@@ -99,6 +99,11 @@
                 console.log(ins)
               },
             })
+            .withInteraction({
+              onClick: (ins) => {
+                console.log(ins)
+              },
+            })
             .build()
         })
         .catch(alert)

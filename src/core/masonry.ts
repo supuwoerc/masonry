@@ -7,6 +7,8 @@ import type {
   PlaceholderRenderer,
 } from './types'
 import type {
+  ClickPayload,
+  ClickResultPayload,
   ImageLoadedPayload,
   LoadMoreResponsePayload,
   Message,
@@ -96,8 +98,10 @@ export class Masonry {
 
   #scrollAbort = new AbortController()
 
-  #pointerState: { down: boolean; lastX: number; lastY: number } = {
+  #pointerState: { down: boolean; startX: number; startY: number; lastX: number; lastY: number } = {
     down: false,
+    startX: 0,
+    startY: 0,
     lastX: 0,
     lastY: 0,
   }
@@ -105,6 +109,8 @@ export class Masonry {
   #imageLoader: ImageLoader | null = null
 
   #pendingUrls: ItemDescriptor[] = []
+
+  #pendingClickEvent: PointerEvent | null = null
 
   /** 实例就绪回调 | Instance ready callback */
   onReady: ((ins: Masonry) => void) | null = null
@@ -217,6 +223,9 @@ export class Masonry {
         break
       case MessageType.RemoveLoading:
         this.#placeholderRenderer.remove(payload as string)
+        break
+      case MessageType.ClickResult:
+        this.#handleClickResult(payload as ClickResultPayload)
         break
       case MessageType.Error:
         this.onError(payload)
@@ -407,6 +416,8 @@ export class Masonry {
 
   #handlePointerDown(e: PointerEvent) {
     this.#pointerState.down = true
+    this.#pointerState.startX = e.clientX
+    this.#pointerState.startY = e.clientY
     this.#pointerState.lastX = e.clientX
     this.#pointerState.lastY = e.clientY
     ;(e.target as HTMLElement)?.setPointerCapture?.(e.pointerId)
@@ -427,8 +438,43 @@ export class Masonry {
     }
   }
 
-  #handlePointerUp(_e: PointerEvent) {
+  #handlePointerUp(e: PointerEvent) {
+    if (!this.#pointerState.down) {
+      return
+    }
     this.#pointerState.down = false
+    const dx = Math.abs(e.clientX - this.#pointerState.startX)
+    const dy = Math.abs(e.clientY - this.#pointerState.startY)
+    if (dx < 5 && dy < 5 && this.#config.interaction?.onClick) {
+      const rect = this.#config.core.canvas.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      this.#pendingClickEvent = e
+      const payload: ClickPayload = { x, y }
+      this.#sendMessage(MessageType.Click, payload)
+    }
+  }
+
+  /**
+   * 处理 Worker 返回的点击结果
+   * Handle click result returned from Worker
+   */
+  #handleClickResult(payload: ClickResultPayload) {
+    if (!payload || !this.#pendingClickEvent) {
+      this.#pendingClickEvent = null
+      return
+    }
+    const onClick = this.#config.interaction?.onClick
+    if (onClick) {
+      onClick({
+        item: payload.item,
+        index: payload.index,
+        row: payload.row,
+        column: payload.column,
+        event: this.#pendingClickEvent,
+      })
+    }
+    this.#pendingClickEvent = null
   }
 
   /**

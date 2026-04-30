@@ -54,10 +54,10 @@ export enum MessageType {
   LayoutUpdated,
   /** 图片加载完成（主线程→Worker）| Image loaded (main→worker) */
   ImageLoaded,
-  /** 命中测试请求（主线程→Worker）| Hit test request (main→worker) */
-  HitTest,
-  /** 命中测试结果响应（Worker→主线程）| Hit test result response (worker→main) */
-  HitTestResponse,
+  /** 点击事件（主线程→Worker）| Click event (main→worker) */
+  Click,
+  /** 点击结果响应（Worker→主线程）| Click result response (worker→main) */
+  ClickResult,
 }
 
 /**
@@ -69,7 +69,7 @@ export type RequestPayload =
   | ResizePayload
   | ScrollPayload
   | ImageLoadedPayload
-  | HitTestPayload
+  | ClickPayload
   | Array<string>
   | string
 
@@ -80,7 +80,7 @@ export type RequestPayload =
 export type ResponsePayload =
   | RenderLoadingResponsePayload
   | LayoutUpdatedPayload
-  | HitTestResponsePayload
+  | ClickResultPayload
   | LoadMoreResponsePayload
   | Error
   | null
@@ -201,10 +201,10 @@ export interface ImageLoadedPayload {
 }
 
 /**
- * 命中测试请求负载
- * Hit test request payload
+ * 点击事件请求负载
+ * Click event request payload
  */
-export interface HitTestPayload {
+export interface ClickPayload {
   /** 点击的 CSS X 坐标 | Click CSS X coordinate */
   x: number
   /** 点击的 CSS Y 坐标 | Click CSS Y coordinate */
@@ -212,10 +212,10 @@ export interface HitTestPayload {
 }
 
 /**
- * 命中测试响应负载（命中时返回项信息，未命中返回 null）
- * Hit test response payload (returns item info on hit, null on miss)
+ * 点击结果响应负载（命中时返回项信息，未命中返回 null）
+ * Click result response payload (returns item info on hit, null on miss)
  */
-export type HitTestResponsePayload = {
+export type ClickResultPayload = {
   /** 命中的网格项 | Hit grid item */
   item: GridItem
   /** 数据源索引 | Data source index */

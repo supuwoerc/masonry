@@ -1,6 +1,7 @@
 import type { MasonryConfiguration } from '../masonry'
 import type { Core, Interaction, LayoutStrategy, LoadMoreConfig } from '../types'
 import type {
+  ClickPayload,
   GridItem,
   ImageLoadedPayload,
   LoadMoreResponsePayload,
@@ -135,6 +136,9 @@ class OffscreenCanvasWorker {
         break
       case MessageType.ImageLoaded:
         this.#handleImageLoaded(payload as ImageLoadedPayload)
+        break
+      case MessageType.Click:
+        this.#handleClick(payload as ClickPayload)
         break
       default:
         throw new MasonryError(`unknown message type: ${type}`)
@@ -382,6 +386,61 @@ class OffscreenCanvasWorker {
     }
     this.#handleRerender()
     this.#checkLoadMore()
+  }
+
+  /**
+   * 处理点击事件，计算命中的网格项
+   * Handle click event, calculate which grid item was hit
+   */
+  #handleClick(payload: ClickPayload) {
+    const { x, y } = payload
+    const contentX = x + this.#scrollX
+    const contentY = y + this.#scrollY
+    const defaultW = this.#config?.core.style?.width ?? 0
+    const defaultH = this.#config?.core.style?.height ?? 0
+    const gap = this.#config?.core.style?.gap ?? 0
+    const columns = Math.max(1, Math.ceil(this.#clientWidth / (defaultW + gap)))
+
+    let hitItem: GridItem | null = null
+
+    if (this.#isLoopActive) {
+      const wrapW = this.#contentWidth + gap
+      const wrapH = this.#contentHeight + gap
+      const normalizedX = wrapW > 0 ? ((contentX % wrapW) + wrapW) % wrapW : contentX
+      const normalizedY = wrapH > 0 ? ((contentY % wrapH) + wrapH) % wrapH : contentY
+      hitItem = this.#findHitItem(normalizedX, normalizedY, defaultW, defaultH)
+    } else {
+      hitItem = this.#findHitItem(contentX, contentY, defaultW, defaultH)
+    }
+
+    if (hitItem) {
+      const row = Math.floor(hitItem.itemIndex / columns)
+      const column = hitItem.itemIndex % columns
+      this.#sendMessage(MessageType.ClickResult, {
+        item: hitItem,
+        index: hitItem.itemIndex,
+        row,
+        column,
+      })
+    } else {
+      this.#sendMessage(MessageType.ClickResult, null)
+    }
+  }
+
+  /**
+   * 在网格项中查找包含指定坐标的项
+   * Find grid item containing the specified coordinates
+   */
+  #findHitItem(x: number, y: number, defaultW: number, defaultH: number): GridItem | null {
+    for (let i = this.#gridItems.length - 1; i >= 0; i--) {
+      const item = this.#gridItems[i]
+      const w = item.width ?? defaultW
+      const h = item.height ?? defaultH
+      if (x >= item.x && x < item.x + w && y >= item.y && y < item.y + h) {
+        return item
+      }
+    }
+    return null
   }
 
   /**
