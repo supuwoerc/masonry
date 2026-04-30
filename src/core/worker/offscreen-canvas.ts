@@ -220,12 +220,33 @@ class OffscreenCanvasWorker {
         this.#copyBackground()
         this.#context.save()
         this.#context.translate(-this.#scrollX, -this.#scrollY)
-        this.#renderGridItems(this.#gridItems)
+        this.#renderGridItems(this.#getVisibleItems(this.#gridItems))
         this.#context.restore()
       } catch (error) {
         this.#sendError(error)
       }
     }
+  }
+
+  /**
+   * 视口裁剪：过滤出可见区域内的项目
+   * Viewport culling: filter items within the visible area
+   */
+  #getVisibleItems(items: GridItem[]): GridItem[] {
+    const buffer = this.#config?.interaction?.scroll?.buffer ?? 1.0
+    const bufferH = this.#clientHeight * buffer
+    const bufferW = this.#clientWidth * buffer
+    const top = this.#scrollY - bufferH
+    const bottom = this.#scrollY + this.#clientHeight + bufferH
+    const left = this.#scrollX - bufferW
+    const right = this.#scrollX + this.#clientWidth + bufferW
+    const defaultW = this.#config?.core.style?.width ?? 0
+    const defaultH = this.#config?.core.style?.height ?? 0
+    return items.filter((item) => {
+      const w = item.width ?? defaultW
+      const h = item.height ?? defaultH
+      return item.x + w > left && item.x < right && item.y + h > top && item.y < bottom
+    })
   }
 
   #handleScroll(payload: ScrollPayload) {
