@@ -1,4 +1,4 @@
-import { SpinPlaceholderRenderer } from './placeholder/spin-placeholder'
+import { BreathingPlaceholderRenderer } from './placeholder/breathing-placeholder'
 
 /**
  * 渲染策略枚举
@@ -12,10 +12,10 @@ export enum RenderStrategy {
 }
 
 /**
- * 默认占位符渲染器实例（线性渐变背景 + 旋转加载动画）
- * Default placeholder renderer instance (linear gradient background + spinning loader animation)
+ * 默认占位符渲染器实例（呼吸渐变动画）
+ * Default placeholder renderer instance (breathing gradient animation)
  */
-export const defaultPlaceholderRenderer = new SpinPlaceholderRenderer({
+export const defaultPlaceholderRenderer = new BreathingPlaceholderRenderer({
   backgroundColor: {
     type: 'linear',
     stops: [

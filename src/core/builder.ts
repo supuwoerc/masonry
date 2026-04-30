@@ -3,7 +3,7 @@ import { merge } from 'lodash-es'
 import { Validator } from '@/helper/validator'
 import { MasonryError } from './error'
 import { Masonry } from './masonry'
-import { SpinPlaceholderRenderer } from './placeholder/spin-placeholder'
+import { BreathingPlaceholderRenderer } from './placeholder/breathing-placeholder'
 import { configurationRules } from './rules'
 
 /**
@@ -79,7 +79,7 @@ export class MasonryBuilder {
    * @returns 当前 Builder 实例 | Current builder instance
    */
   withPlaceholder(config: MasonryConfiguration['placeholderRenderer']) {
-    this.#config.placeholderRenderer = config ?? new SpinPlaceholderRenderer()
+    this.#config.placeholderRenderer = config ?? new BreathingPlaceholderRenderer()
     return this
   }
 

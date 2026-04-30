@@ -10,6 +10,6 @@
 export { MasonryBuilder } from '@/core/builder'
 export { MasonryError } from '@/core/error'
 export { Masonry } from '@/core/masonry'
-export { SkeletonPlaceholderRenderer } from '@/core/placeholder/skeleton-placeholder'
+export { BreathingPlaceholderRenderer } from '@/core/placeholder/breathing-placeholder'
 export { SpinPlaceholderRenderer } from '@/core/placeholder/spin-placeholder'
 export { StatsMonitor } from '@/helper/stats-monitor'

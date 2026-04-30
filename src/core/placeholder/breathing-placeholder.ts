@@ -2,8 +2,8 @@ import type { GradientBackground, PlaceholderRenderer } from '../types'
 import { createBackgroundStyle } from '@/helper/background'
 
 /**
- * 骨架屏占位符动画状态
- * Skeleton placeholder animation state
+ * 呼吸动画占位符状态
+ * Breathing animation placeholder state
  */
 interface AnimationState {
   /** 动画开始时间 | Animation start time */
@@ -17,25 +17,25 @@ interface AnimationState {
 }
 
 /**
- * 骨架屏占位符选项
- * Skeleton placeholder options
+ * 呼吸占位符选项
+ * Breathing placeholder options
  */
-interface SkeletonOptions {
+interface BreathingOptions {
   /**
-   * 骨架屏底色（支持纯色或渐变）
+   * 底色（支持纯色或渐变）
    * Background color (supports solid color or gradient)
    * @default '#e0e0e0'
    */
   backgroundColor?: string | GradientBackground
   /**
-   * 光波高亮色
-   * Shimmer highlight color
+   * 呼吸叠加色
+   * Breathing overlay color
    * @default 'rgba(255, 255, 255, 0.6)'
    */
   highlightColor?: string
   /**
-   * 单次光波扫描动画持续时间（ms）
-   * Duration of one shimmer sweep animation in ms
+   * 单次呼吸周期时间（ms）
+   * Duration of one breathing cycle in ms
    * @default 1500
    */
   duration?: number
@@ -48,18 +48,18 @@ interface SkeletonOptions {
 }
 
 /**
- * 骨架屏占位符渲染器
- * Skeleton placeholder renderer
+ * 呼吸渐变占位符渲染器
+ * Breathing gradient placeholder renderer
  *
- * 在图片加载过程中显示带有横向光波扫描动画的骨架占位图。
- * 光波从左到右循环扫过，模拟内容加载中的视觉反馈。
+ * 在图片加载过程中显示带有呼吸渐变动画的占位图。
+ * 整体明暗随正弦曲线周期性变化，模拟呼吸节奏。
  *
- * Displays a skeleton placeholder with a horizontal shimmer sweep animation during image loading.
- * The shimmer sweeps from left to right in a loop, providing visual loading feedback.
+ * Displays a placeholder with breathing gradient animation during image loading.
+ * The overall brightness oscillates following a sine curve, simulating a breathing rhythm.
  *
  * @example
  * ```ts
- * const skeleton = new SkeletonPlaceholderRenderer({
+ * const breathing = new BreathingPlaceholderRenderer({
  *   backgroundColor: '#e0e0e0',
  *   highlightColor: 'rgba(255, 255, 255, 0.6)',
  *   duration: 1500,
@@ -67,17 +67,17 @@ interface SkeletonOptions {
  * })
  * ```
  */
-export class SkeletonPlaceholderRenderer implements PlaceholderRenderer {
+export class BreathingPlaceholderRenderer implements PlaceholderRenderer {
   #cache = new Map<string, AnimationState>()
 
-  #options: Required<SkeletonOptions>
+  #options: Required<BreathingOptions>
 
   /**
-   * 创建骨架屏占位符渲染器实例
-   * Create skeleton placeholder renderer instance
+   * 创建呼吸占位符渲染器实例
+   * Create breathing placeholder renderer instance
    * @param options - 渲染器选项 | Renderer options
    */
-  constructor(options: SkeletonOptions = {}) {
+  constructor(options: BreathingOptions = {}) {
     this.#options = {
       backgroundColor: '#e0e0e0',
       highlightColor: 'rgba(255, 255, 255, 0.6)',
@@ -115,23 +115,15 @@ export class SkeletonPlaceholderRenderer implements PlaceholderRenderer {
     this.#cache.delete(id)
   }
 
-  #drawShimmer(ctx: CanvasRenderingContext2D, width: number, height: number, progress: number) {
-    const shimmerWidth = width * 0.4
-    const totalTravel = width + shimmerWidth * 2
-    const x = -shimmerWidth + progress * totalTravel
-
-    const gradient = ctx.createLinearGradient(x, 0, x + shimmerWidth, 0)
-    gradient.addColorStop(0, 'transparent')
-    gradient.addColorStop(0.5, this.#options.highlightColor)
-    gradient.addColorStop(1, 'transparent')
-
-    ctx.fillStyle = gradient
+  #drawBreathing(ctx: CanvasRenderingContext2D, width: number, height: number, progress: number) {
+    const alpha = 0.3 + 0.3 * Math.sin(progress * Math.PI * 2)
+    ctx.fillStyle = this.#options.highlightColor.replace(/[\d.]+\)$/, `${alpha})`)
     ctx.fillRect(0, 0, width, height)
   }
 
   /**
-   * 渲染一帧骨架屏动画并返回位图
-   * Render one frame of skeleton animation and return bitmap
+   * 渲染一帧呼吸动画并返回位图
+   * Render one frame of breathing animation and return bitmap
    * @param width - 占位符宽度（CSS 像素）| Placeholder width (CSS pixels)
    * @param height - 占位符高度（CSS 像素）| Placeholder height (CSS pixels)
    * @param id - 唯一标识（用于缓存动画状态）| Unique ID (for caching animation state)
@@ -184,7 +176,7 @@ export class SkeletonPlaceholderRenderer implements PlaceholderRenderer {
 
     const elapsed = now - state.startTime
     const progress = (elapsed % this.#options.duration) / this.#options.duration
-    this.#drawShimmer(ctx, cssWidth, cssHeight, progress)
+    this.#drawBreathing(ctx, cssWidth, cssHeight, progress)
 
     ctx.restore()
 
