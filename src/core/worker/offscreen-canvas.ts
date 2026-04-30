@@ -91,6 +91,11 @@ class OffscreenCanvasWorker {
   #contentHeight = 0
   #isInertiaActive = false
 
+  #loadMoreState = {
+    loading: false,
+    hasMore: true,
+  }
+
   constructor() {
     this.#setupMessageHandler()
   }
@@ -114,6 +119,7 @@ class OffscreenCanvasWorker {
       case MessageType.Render:
         this.#startAnimationLoop()
         this.#handleRerender()
+        this.#checkLoadMore()
         break
       case MessageType.Resize:
         this.#handleResize(payload as ResizePayload)
@@ -174,6 +180,9 @@ class OffscreenCanvasWorker {
       this.#backgroundContext.imageSmoothingEnabled = true
       this.#backgroundContext.imageSmoothingQuality = 'high'
       this.#config = payload.config
+      if (!this.#config.loader) {
+        this.#loadMoreState.hasMore = false
+      }
       const mode = this.#config.core.layout ?? 'grid'
       this.#layoutStrategy = mode === 'masonry' ? new MasonryLayout() : new GridLayout()
       if (this.#config.core.items?.length) {
@@ -244,7 +253,11 @@ class OffscreenCanvasWorker {
         this.#copyBackground()
         this.#context.save()
         this.#context.translate(-this.#scrollX, -this.#scrollY)
-        this.#renderGridItems(this.#getVisibleItems(this.#gridItems))
+        if (this.#isLoopActive) {
+          this.#renderLoopedItems(this.#gridItems)
+        } else {
+          this.#renderGridItems(this.#getVisibleItems(this.#gridItems))
+        }
         this.#context.restore()
       } catch (error) {
         this.#sendError(error)
@@ -273,6 +286,85 @@ class OffscreenCanvasWorker {
     })
   }
 
+  /**
+   * 无缝循环模式下获取可见渲染实例（含 ghost 副本）
+   * Get visible render instances in loop mode (including ghost copies)
+   */
+  #getVisibleItemsLooped(
+    items: GridItem[],
+  ): Array<{ item: GridItem; offsetX: number; offsetY: number }> {
+    const buffer = this.#config?.interaction?.scroll?.buffer ?? 1.0
+    const bufferH = this.#clientHeight * buffer
+    const bufferW = this.#clientWidth * buffer
+    const defaultW = this.#config?.core.style?.width ?? 0
+    const defaultH = this.#config?.core.style?.height ?? 0
+    const gap = this.#config?.core.style?.gap ?? 0
+    const wrapW = this.#contentWidth + gap
+    const wrapH = this.#contentHeight + gap
+
+    const top = this.#scrollY - bufferH
+    const bottom = this.#scrollY + this.#clientHeight + bufferH
+    const left = this.#scrollX - bufferW
+    const right = this.#scrollX + this.#clientWidth + bufferW
+
+    const tilesLeft = wrapW > 0 ? Math.ceil((0 - left) / wrapW) : 0
+    const tilesRight = wrapW > 0 ? Math.ceil((right - wrapW) / wrapW) : 0
+    const tilesTop = wrapH > 0 ? Math.ceil((0 - top) / wrapH) : 0
+    const tilesBottom = wrapH > 0 ? Math.ceil((bottom - wrapH) / wrapH) : 0
+
+    const offsets: Array<[number, number]> = []
+    for (let tx = -tilesLeft; tx <= tilesRight; tx++) {
+      for (let ty = -tilesTop; ty <= tilesBottom; ty++) {
+        offsets.push([tx * wrapW, ty * wrapH])
+      }
+    }
+
+    const results: Array<{ item: GridItem; offsetX: number; offsetY: number }> = []
+    for (const [ox, oy] of offsets) {
+      for (const item of items) {
+        const w = item.width ?? defaultW
+        const h = item.height ?? defaultH
+        const ix = item.x + ox
+        const iy = item.y + oy
+        if (ix + w > left && ix < right && iy + h > top && iy < bottom) {
+          results.push({ item, offsetX: ox, offsetY: oy })
+        }
+      }
+    }
+    return results
+  }
+
+  /**
+   * 无缝循环模式下渲染项目（含 ghost 副本）
+   * Render items in loop mode (including ghost copies)
+   */
+  #renderLoopedItems(items: GridItem[]): void {
+    const instances = this.#getVisibleItemsLooped(items)
+    if (!this.#context || !this.#config?.core.style || instances.length === 0) {
+      return
+    }
+    const { width: defaultWidth, height: defaultHeight, radius = 0 } = this.#config.core.style
+    for (const { item, offsetX, offsetY } of instances) {
+      if (!item.image) {
+        continue
+      }
+      const w = item.width ?? defaultWidth
+      const h = item.height ?? defaultHeight
+      const drawX = item.x + offsetX
+      const drawY = item.y + offsetY
+      if (radius > 0) {
+        this.#context.save()
+        this.#context.beginPath()
+        this.#context.roundRect(drawX, drawY, w, h, radius)
+        this.#context.clip()
+        this.#context.drawImage(item.image, drawX, drawY, w, h)
+        this.#context.restore()
+      } else {
+        this.#context.drawImage(item.image, drawX, drawY, w, h)
+      }
+    }
+  }
+
   #handleScroll(payload: ScrollPayload) {
     const scroll = this.#config?.interaction?.scroll
     const disableH = scroll?.disabled?.horizontal ?? false
@@ -289,13 +381,60 @@ class OffscreenCanvasWorker {
       this.#isInertiaActive = true
     }
     this.#handleRerender()
+    this.#checkLoadMore()
+  }
+
+  /**
+   * 检查滚动位置是否接近边界，触发加载更多（垂直+水平）
+   * Check if scroll position is near boundary to trigger load more (vertical + horizontal)
+   */
+  #checkLoadMore() {
+    if (!this.#config?.loader || this.#loadMoreState.loading || !this.#loadMoreState.hasMore) {
+      return
+    }
+    const threshold = this.#config.interaction?.scroll?.threshold
+    const remainingY = this.#contentHeight - this.#clientHeight - this.#scrollY
+    const remainingX = this.#contentWidth - this.#clientWidth - this.#scrollX
+    const thresholdY = threshold ?? this.#clientHeight
+    const thresholdX = threshold ?? this.#clientWidth
+    if (remainingY <= thresholdY || remainingX <= thresholdX) {
+      this.#loadMoreState.loading = true
+      this.#sendMessage(MessageType.LoadMore, null)
+    }
   }
 
   #clampScroll() {
-    const maxX = Math.max(0, this.#contentWidth - this.#clientWidth)
-    const maxY = Math.max(0, this.#contentHeight - this.#clientHeight)
-    this.#scrollX = Math.max(0, Math.min(this.#scrollX, maxX))
-    this.#scrollY = Math.max(0, Math.min(this.#scrollY, maxY))
+    if (this.#isLoopActive) {
+      this.#wrapScroll()
+    } else {
+      const maxX = Math.max(0, this.#contentWidth - this.#clientWidth)
+      const maxY = Math.max(0, this.#contentHeight - this.#clientHeight)
+      this.#scrollX = Math.max(0, Math.min(this.#scrollX, maxX))
+      this.#scrollY = Math.max(0, Math.min(this.#scrollY, maxY))
+    }
+  }
+
+  get #isLoopActive(): boolean {
+    const loopEnabled = this.#config?.interaction?.scroll?.loop ?? true
+    return loopEnabled && !this.#loadMoreState.hasMore
+  }
+
+  #wrapScroll() {
+    const disableH = this.#config?.interaction?.scroll?.disabled?.horizontal ?? false
+    const disableV = this.#config?.interaction?.scroll?.disabled?.vertical ?? false
+    const gap = this.#config?.core.style?.gap ?? 0
+    const wrapW = this.#contentWidth + gap
+    const wrapH = this.#contentHeight + gap
+    if (!disableH && wrapW > 0) {
+      this.#scrollX = ((this.#scrollX % wrapW) + wrapW) % wrapW
+    } else {
+      this.#scrollX = 0
+    }
+    if (!disableV && wrapH > 0) {
+      this.#scrollY = ((this.#scrollY % wrapH) + wrapH) % wrapH
+    } else {
+      this.#scrollY = 0
+    }
   }
 
   #tickInertia() {
@@ -311,6 +450,7 @@ class OffscreenCanvasWorker {
       this.#velocityY = 0
       this.#isInertiaActive = false
     }
+    this.#checkLoadMore()
   }
 
   #startAnimationLoop() {
@@ -340,6 +480,10 @@ class OffscreenCanvasWorker {
   }
 
   #handleLoadMoreResponse(payload: LoadMoreResponsePayload) {
+    this.#loadMoreState.loading = false
+    if (!payload.hasMore) {
+      this.#loadMoreState.hasMore = false
+    }
     if (payload.data.length > 0) {
       const newItems = payload.data.map((bitmap, i) => ({
         id: nanoid(),
@@ -353,6 +497,7 @@ class OffscreenCanvasWorker {
       this.#performLayout()
       this.#handleRerender()
     }
+    this.#checkLoadMore()
   }
 
   #handleImageLoaded(payload: ImageLoadedPayload) {

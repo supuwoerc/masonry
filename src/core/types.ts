@@ -221,6 +221,12 @@ export interface ScrollConfig {
    * @default 200
    */
   threshold?: number
+  /**
+   * 数据加载完毕后是否启用无缝循环滚动
+   * Whether to enable seamless loop scrolling when all data is loaded
+   * @default true
+   */
+  loop?: boolean
 }
 
 /**

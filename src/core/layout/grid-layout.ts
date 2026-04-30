@@ -21,24 +21,21 @@ export class GridLayout implements LayoutStrategy {
    * @returns 布局结果 | Layout result
    */
   calculate(input: LayoutInput): LayoutResult {
-    const { items, containerWidth, containerHeight, style } = input
+    const { items, containerWidth, style } = input
     const { width: itemWidth, height: itemHeight, gap = 0 } = style
 
     const blockWidth = itemWidth + gap
     const blockHeight = itemHeight + gap
     const columns = Math.max(1, Math.ceil(containerWidth / blockWidth))
-    const rows = Math.max(1, Math.ceil(containerHeight / blockHeight))
 
-    const totalSlots = rows * columns
     const positioned: GridItem[] = []
 
-    for (let i = 0; i < totalSlots; i++) {
+    for (let i = 0; i < items.length; i++) {
       const column = i % columns
       const row = Math.floor(i / columns)
       const x = column * blockWidth
       const y = row * blockHeight
-      const itemIndex = items.length > 0 ? i % items.length : 0
-      const source = items[itemIndex] || null
+      const source = items[i]
 
       positioned.push({
         id: source?.id ?? nanoid(),
@@ -48,10 +45,11 @@ export class GridLayout implements LayoutStrategy {
         y,
         width: itemWidth,
         height: itemHeight,
-        itemIndex,
+        itemIndex: source?.itemIndex ?? i,
       })
     }
 
+    const rows = Math.ceil(items.length / columns)
     return {
       items: positioned,
       contentWidth: columns * blockWidth - gap,

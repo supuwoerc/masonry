@@ -280,15 +280,33 @@ export class Masonry {
       try {
         this.#pagination.loading = true
         const { loadMore, pageSize } = this.#config.loader
+        const list = await loadMore(this.#pagination.page, pageSize)
         const message: LoadMoreResponsePayload = {
           page: this.#pagination.page,
-          hasMore: true,
+          hasMore: list.length >= pageSize,
           data: [],
         }
-        const list = await loadMore(this.#pagination.page, pageSize)
         if (list && list.length > 0) {
           this.#pagination.page++
-          message.data = list as ImageBitmap[]
+          if (list[0] instanceof ImageBitmap) {
+            message.data = list as ImageBitmap[]
+          } else {
+            const descriptors = this.#normalizeItems(list as string[] | ItemDescriptor[])
+            const loader = this.#imageLoader ?? new ImageLoader(this.#config.imageLoad)
+            const bitmaps: ImageBitmap[] = []
+            await loader.loadBatch(
+              descriptors.map((d, i) => ({
+                url: d.url,
+                index: i,
+                width: d.width,
+                height: d.height,
+              })),
+              (_index, bitmap) => {
+                bitmaps.push(bitmap)
+              },
+            )
+            message.data = bitmaps
+          }
         }
         if (list.length < pageSize) {
           this.#pagination.hasMore = false
