@@ -8,8 +8,6 @@ import { createBackgroundStyle } from '@/helper/background'
 interface AnimationState {
   /** 动画开始时间 | Animation start time */
   startTime: number
-  /** 上一帧时间 | Last frame time */
-  lastFrameTime: number
   /** 当前位图快照 | Current bitmap snapshot */
   bitmap: ImageBitmap
   /** 离屏绘制用 Canvas | Offscreen drawing canvas */
@@ -155,7 +153,6 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
       state = {
         canvas,
         dpr,
-        lastFrameTime: now,
         startTime: now,
         bitmap: await createImageBitmap(canvas),
       }

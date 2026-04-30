@@ -212,13 +212,15 @@ class OffscreenCanvasWorker {
     const renderFrame = () => {
       const loadingItems = this.#gridItems.flat().filter((item) => item.status !== 'loaded')
       const ids = loadingItems.map((item) => item.id)
-      const idsChanged =
-        ids.length !== this.#lastLoadingIds.size || ids.some((id) => !this.#lastLoadingIds.has(id))
-      if (idsChanged && ids.length > 0) {
-        this.#lastLoadingIds = new Set(ids)
+      if (ids.length > 0) {
+        const idsChanged =
+          ids.length !== this.#lastLoadingIds.size ||
+          ids.some((id) => !this.#lastLoadingIds.has(id))
+        if (idsChanged) {
+          this.#lastLoadingIds = new Set(ids)
+        }
         this.#sendMessage(MessageType.RenderLoading, ids)
-      }
-      if (ids.length === 0) {
+      } else {
         this.#lastLoadingIds.clear()
       }
       requestAnimationFrame(() => {
@@ -342,7 +344,8 @@ class OffscreenCanvasWorker {
         this.#context.setTransform(dpr, 0, 0, dpr, 0, 0)
         this.#backgroundContext.setTransform(dpr, 0, 0, dpr, 0, 0)
         this.#calculateSize()
-        this.#generateGridItems(this.#allItems)
+        // this.#generateGridItems(this.#allItems)
+        this.#generateGridItems([])
         // TODO:重新渲染
         this.#handleRerender()
       }
