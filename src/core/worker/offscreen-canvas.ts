@@ -17,15 +17,40 @@ import { createBackgroundStyle } from '@/helper/background'
 import { MasonryError } from '../error'
 import { MessageType } from './protocol'
 
+/**
+ * Worker 端配置接口（排除了仅主线程需要的字段）
+ * Worker-side configuration interface (excludes main-thread-only fields)
+ */
 export interface WorkerConfiguration extends Omit<
   MasonryConfiguration,
   'core' | 'interaction' | 'loader' | 'placeholderRenderer' | 'events'
 > {
-  core: Omit<Core, 'canvas'>
+  /** 核心配置（无 canvas、items 固定为 ImageBitmap[]）| Core config (no canvas, items are ImageBitmap[]) */
+  core: Omit<Core, 'canvas' | 'items'> & { items?: ImageBitmap[] }
+  /** 交互配置（无 onClick 回调）| Interaction config (no onClick callback) */
   interaction?: Omit<Interaction, 'onClick'>
+  /** 加载配置（无 loadMore 函数）| Loader config (no loadMore function) */
   loader?: Omit<LoadMoreConfig, 'loadMore'>
 }
 
+/**
+ * OffscreenCanvas Worker 渲染引擎
+ * OffscreenCanvas Worker rendering engine
+ *
+ * 运行在 Web Worker 线程中，负责：
+ * - 接收主线程传来的 OffscreenCanvas 进行离屏绘制
+ * - 管理网格项的布局计算和渲染
+ * - 处理背景绘制（纯色/渐变）
+ * - 响应容器尺寸变化重新布局
+ * - 协调占位符动画帧更新
+ *
+ * Runs in a Web Worker thread, responsible for:
+ * - Receiving OffscreenCanvas from main thread for offscreen drawing
+ * - Managing grid item layout calculation and rendering
+ * - Handling background drawing (solid/gradient)
+ * - Responding to container resize with re-layout
+ * - Coordinating placeholder animation frame updates
+ */
 class OffscreenCanvasWorker {
   #backgroundCanvas!: OffscreenCanvas
   #backgroundContext!: OffscreenCanvasRenderingContext2D

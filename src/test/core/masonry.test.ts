@@ -74,7 +74,7 @@ describe('masonry builder', () => {
 
     const builder = new MasonryBuilder()
       .withCore({ canvas, style: { width: 200, height: 300, gap: 10, radius: 5 }, items: [bitmap] })
-      .withInteraction({ disabled: { horizontal: true } })
+      .withInteraction({ scroll: { disabled: { horizontal: true } } })
       .withEvents({ onError: () => {}, onReady: () => {} })
 
     expect(builder).toBeInstanceOf(MasonryBuilder)

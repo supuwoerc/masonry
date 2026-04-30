@@ -17,21 +17,48 @@ import { configurationRules } from './rules'
 import { MessageType } from './worker/protocol'
 import 'path2d-polyfill'
 
+/**
+ * Masonry 完整配置接口
+ * Complete Masonry configuration interface
+ */
 export interface MasonryConfiguration {
+  /** 核心配置 | Core configuration */
   core: Core
 
+  /** 交互配置 | Interaction configuration */
   interaction?: Interaction
 
+  /** 无限滚动加载配置 | Infinite scroll loader configuration */
   loader?: LoadMoreConfig
 
+  /** 占位符渲染器 | Placeholder renderer */
   placeholderRenderer?: PlaceholderRenderer
 
+  /** 事件回调 | Event callbacks */
   events?: {
+    /** 实例就绪回调 | Instance ready callback */
     onReady?: (instance: Masonry) => void
+    /** 错误回调 | Error callback */
     onError?: (err: unknown) => void
   }
 }
 
+/**
+ * Masonry 核心类，负责主线程端的协调工作
+ * Masonry core class, responsible for main-thread orchestration
+ *
+ * 职责包括：
+ * - 初始化 Web Worker 和 OffscreenCanvas
+ * - 管理主线程与 Worker 间的消息通信
+ * - 处理 ResizeObserver 响应容器尺寸变化
+ * - 协调占位符渲染和无限滚动加载
+ *
+ * Responsibilities include:
+ * - Initializing Web Worker and OffscreenCanvas
+ * - Managing message communication between main thread and worker
+ * - Handling ResizeObserver for container size changes
+ * - Coordinating placeholder rendering and infinite scroll loading
+ */
 export class Masonry {
   #validator = new Validator<MasonryConfiguration>(configurationRules)
 
@@ -55,10 +82,19 @@ export class Masonry {
 
   #placeholderRenderer: PlaceholderRenderer = defaultPlaceholderRenderer
 
+  /** 实例就绪回调 | Instance ready callback */
   onReady: ((ins: Masonry) => void) | null = null
 
+  /** 错误处理回调 | Error handler callback */
   onError: (e: unknown) => void = (e: unknown) => console.error(e)
 
+  /**
+   * 创建 Masonry 实例
+   * Create a Masonry instance
+   * @param config - 完整配置 | Complete configuration
+   * @throws {MasonryError} 环境不支持 Canvas 或配置验证失败时抛出
+   *         Throws when Canvas is not supported or configuration validation fails
+   */
   constructor(config: MasonryConfiguration) {
     if (!isCanvasSupported()) {
       throw new MasonryError('the current environment does not support the canvas API')
@@ -98,7 +134,7 @@ export class Masonry {
         config: {
           core: {
             backgroundColor: this.#config.core.backgroundColor,
-            items: this.#config.core.items,
+            items: this.#config.core.items as ImageBitmap[] | undefined,
             style: this.#config.core.style,
             limit: this.#config.core.limit,
             timeout: this.#config.core.timeout,
@@ -108,10 +144,7 @@ export class Masonry {
       }
       if (this.#config.interaction) {
         payload.config.interaction = {
-          disabled: {
-            horizontal: this.#config.interaction?.disabled?.horizontal,
-            vertical: this.#config.interaction?.disabled?.vertical,
-          },
+          scroll: this.#config.interaction?.scroll,
         }
       }
       if (this.#config.loader) {
@@ -215,7 +248,7 @@ export class Masonry {
         const list = await loadMore(this.#pagination.page, pageSize)
         if (list && list.length > 0) {
           this.#pagination.page++
-          message.data = list
+          message.data = list as ImageBitmap[]
         }
         if (list.length < pageSize) {
           this.#pagination.hasMore = false
@@ -253,6 +286,10 @@ export class Masonry {
     }
   }
 
+  /**
+   * 销毁实例，释放所有资源
+   * Destroy the instance and release all resources
+   */
   destroy() {
     if (this.#useWorker && this.#worker) {
       this.#worker.terminate()

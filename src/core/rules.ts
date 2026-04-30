@@ -2,6 +2,10 @@ import type { MasonryConfiguration } from './masonry'
 import type { Rule } from '@/helper/validator'
 import { isFunction, isUndefined } from 'lodash-es'
 
+/**
+ * Masonry 配置验证规则集合
+ * Masonry configuration validation rules
+ */
 export const configurationRules: Rule<MasonryConfiguration>[] = [
   {
     key: 'core',
@@ -82,13 +86,13 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
     allowEmpty: true,
   },
   {
-    key: 'interaction.disabled.horizontal',
+    key: 'interaction.scroll.disabled.horizontal',
     type: 'boolean',
     message: 'horizontal disabled must be a boolean value',
     allowEmpty: true,
   },
   {
-    key: 'interaction.disabled.vertical',
+    key: 'interaction.scroll.disabled.vertical',
     type: 'boolean',
     message: 'vertical disabled must be a boolean value',
     allowEmpty: true,

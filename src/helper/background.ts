@@ -1,6 +1,19 @@
 import type { GradientBackground } from '../core/types'
 import { isString } from 'lodash-es'
 
+/**
+ * 根据背景配置创建 Canvas 填充样式
+ * Create Canvas fill style based on background configuration
+ *
+ * 支持纯色字符串和渐变（线性/径向）两种模式。
+ * Supports solid color strings and gradient (linear/radial) modes.
+ *
+ * @param ctx - Canvas 2D 渲染上下文 | Canvas 2D rendering context
+ * @param width - 画布宽度 | Canvas width
+ * @param height - 画布高度 | Canvas height
+ * @param bg - 背景配置（颜色字符串或渐变对象）| Background config (color string or gradient object)
+ * @returns Canvas 填充样式（字符串或 CanvasGradient）| Canvas fill style (string or CanvasGradient)
+ */
 export function createBackgroundStyle(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   width: number,

@@ -1,23 +1,52 @@
 import type { GradientBackground, PlaceholderRenderer } from '../types'
 import { createBackgroundStyle } from '@/helper/background'
 
+/**
+ * 占位符动画状态
+ * Placeholder animation state
+ */
 interface AnimationState {
+  /** 动画开始时间 | Animation start time */
   startTime: number
+  /** 上一帧时间 | Last frame time */
   lastFrameTime: number
+  /** 当前位图快照 | Current bitmap snapshot */
   bitmap: ImageBitmap
+  /** 离屏绘制用 Canvas | Offscreen drawing canvas */
   canvas: HTMLCanvasElement
+  /** 设备像素比 | Device pixel ratio */
   dpr: number
 }
 
+/**
+ * 占位符渲染器选项
+ * Placeholder renderer options
+ */
 interface PlaceholderOptions {
+  /** 背景颜色或渐变配置 | Background color or gradient configuration */
   backgroundColor?: string | GradientBackground
 }
 
+/**
+ * 旋转加载动画占位符渲染器
+ * Spinning loader animation placeholder renderer
+ *
+ * 在图片加载过程中显示带有旋转圆点动画的占位图。
+ * 每个占位符独立管理动画状态和 Canvas 缓存。
+ *
+ * Displays a placeholder with spinning dots animation during image loading.
+ * Each placeholder independently manages animation state and canvas cache.
+ */
 export class SpinPlaceholderRenderer implements PlaceholderRenderer {
   #cache = new Map<string, AnimationState>()
 
   #options: PlaceholderOptions = { backgroundColor: '#f2f2f2' }
 
+  /**
+   * 创建旋转占位符渲染器实例
+   * Create spinning placeholder renderer instance
+   * @param options - 渲染器选项 | Renderer options
+   */
   constructor(options: PlaceholderOptions = {}) {
     this.#options = {
       backgroundColor: '#f2f2f2',
@@ -25,6 +54,10 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     }
   }
 
+  /**
+   * 释放所有缓存资源
+   * Dispose all cached resources
+   */
   dispose() {
     this.#cache.forEach((state) => {
       state.canvas.width = 0
@@ -34,6 +67,11 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     this.#cache.clear()
   }
 
+  /**
+   * 移除指定 ID 的占位符并释放资源
+   * Remove placeholder by ID and release resources
+   * @param id - 占位符唯一标识 | Placeholder unique identifier
+   */
   remove(id: string) {
     const state = this.#cache.get(id)
     if (state) {
@@ -83,6 +121,14 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     ctx.restore()
   }
 
+  /**
+   * 渲染一帧占位符动画并返回位图
+   * Render one frame of placeholder animation and return bitmap
+   * @param width - 占位符宽度（CSS 像素）| Placeholder width (CSS pixels)
+   * @param height - 占位符高度（CSS 像素）| Placeholder height (CSS pixels)
+   * @param id - 唯一标识（用于缓存动画状态）| Unique ID (for caching animation state)
+   * @returns 当前帧的 ImageBitmap | Current frame ImageBitmap
+   */
   async render(width: number, height: number, id: string): Promise<ImageBitmap> {
     const now = performance.now()
     const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -96,15 +142,12 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
 
     if (!state) {
       const canvas = document.createElement('canvas')
-      // 设置物理尺寸
       canvas.width = physWidth
       canvas.height = physHeight
-      // 设置CSS尺寸
       canvas.style.width = `${cssWidth}px`
       canvas.style.height = `${cssHeight}px`
 
       const ctx = canvas.getContext('2d')!
-      // 应用DPI缩放
       ctx.scale(dpr, dpr)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
@@ -120,14 +163,11 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     }
 
     const ctx = state.canvas.getContext('2d')!
-    // 重置缩放和样式
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0)
     ctx.imageSmoothingEnabled = false
 
-    // 清空画布（使用整数坐标）
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
-    // 绘制背景（对齐物理像素）
     const bgStyle = createBackgroundStyle(
       ctx,
       cssWidth,
@@ -137,7 +177,6 @@ export class SpinPlaceholderRenderer implements PlaceholderRenderer {
     ctx.fillStyle = bgStyle
     ctx.fillRect(0, 0, Math.ceil(cssWidth), Math.ceil(cssHeight))
 
-    // 绘制旋转指示器（使用整数坐标）
     const elapsed = now - state.startTime
     const angle = ((elapsed / 1200) * 360) % 360
     this.#drawLoader(ctx, cssWidth, cssHeight, angle)
