@@ -10,6 +10,7 @@ import type {
   ClickPayload,
   ClickResultPayload,
   ImageLoadedPayload,
+  LayoutUpdatedPayload,
   LoadMoreResponsePayload,
   Message,
   MessagePayload,
@@ -98,6 +99,7 @@ export class Masonry {
 
   #scrollAbort = new AbortController()
 
+  #dprMediaQuery: MediaQueryList | null = null
   #pointerState: { down: boolean; startX: number; startY: number; lastX: number; lastY: number } = {
     down: false,
     startX: 0,
@@ -144,6 +146,8 @@ export class Masonry {
     this.#initScrollListeners()
     if (this.#useWorker) {
       this.#initWorker()
+    } else {
+      this.onError(new MasonryError('Web Worker is not supported in this environment'))
     }
   }
 
@@ -156,7 +160,7 @@ export class Masonry {
       const offscreenCanvas = canvas.transferControlToOffscreen()
       this.#worker.onmessage = this.#handleWorkerMessage.bind(this)
       this.#worker.onerror = (e: Event) => {
-        this.onError(`there is an error with your worker:${JSON.stringify(e)}`)
+        this.onError(new MasonryError(`Worker error: ${(e as ErrorEvent).message || 'unknown'}`))
       }
       const payload: SetupPayload = {
         offscreenCanvas,
@@ -224,6 +228,9 @@ export class Masonry {
       case MessageType.RemoveLoading:
         this.#placeholderRenderer.remove(payload as string)
         break
+      case MessageType.LayoutUpdated:
+        this.#config.interaction?.onLayoutUpdate?.(payload as LayoutUpdatedPayload)
+        break
       case MessageType.ClickResult:
         this.#handleClickResult(payload as ClickResultPayload)
         break
@@ -279,6 +286,24 @@ export class Masonry {
 
   #initObserver() {
     this.#resizeObserver.observe(this.#config.core.canvas)
+    this.#initDprListener()
+  }
+
+  /**
+   * 监听设备像素比变化（浏览器缩放）
+   * Listen for device pixel ratio changes (browser zoom)
+   */
+  #initDprListener() {
+    if (typeof window.matchMedia !== 'function') {
+      return
+    }
+    const updateDpr = () => {
+      this.#resize()
+      this.#dprMediaQuery?.removeEventListener('change', updateDpr)
+      this.#initDprListener()
+    }
+    this.#dprMediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+    this.#dprMediaQuery.addEventListener('change', updateDpr)
   }
 
   #handleLoadMoreTask() {
@@ -323,7 +348,7 @@ export class Masonry {
         }
         this.#sendMessage(MessageType.LoadMoreResponse, message)
       } catch (error) {
-        this.onError(`failed to load more items:${error}`)
+        this.onError(new MasonryError(`Failed to load more items: ${error}`))
       } finally {
         this.#pagination.loading = false
       }
@@ -489,6 +514,7 @@ export class Masonry {
     this.#imageLoader?.dispose()
     this.#scrollAbort.abort()
     this.#resizeObserver.disconnect()
+    this.#dprMediaQuery = null
     this.#config.placeholderRenderer?.dispose()
   }
 }

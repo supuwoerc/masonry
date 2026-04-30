@@ -273,6 +273,23 @@ export interface Core {
 }
 
 /**
+ * 布局更新事件参数
+ * Layout update event parameters
+ */
+export interface LayoutUpdateEvent {
+  /**
+   * 内容总宽度（px）
+   * Total content width in pixels
+   */
+  contentWidth: number
+  /**
+   * 内容总高度（px）
+   * Total content height in pixels
+   */
+  contentHeight: number
+}
+
+/**
  * 交互配置
  * Interaction configuration
  */
@@ -282,6 +299,11 @@ export interface Interaction {
    * Click event callback
    */
   onClick?: (event: ClickEvent) => void
+  /**
+   * 布局更新回调
+   * Layout update callback
+   */
+  onLayoutUpdate?: (event: LayoutUpdateEvent) => void
   /**
    * 滚动配置
    * Scroll configuration
