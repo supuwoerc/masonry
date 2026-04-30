@@ -1,5 +1,6 @@
 import type { CheckableType } from '@/utils/is'
-import { get, isArray, isEmpty, isNull, isNumber, isUndefined } from 'lodash-es'
+import { isDefined, isNumber } from '@supuwoerc/toolkit'
+import { get, isArray, isEmpty, isNull } from 'lodash-es'
 import { isTargetType } from '@/utils/is'
 
 /**
@@ -126,11 +127,11 @@ export class Validator<T extends object> {
     const errors: string[] = []
     for (const rule of this.rules) {
       const value = get(target, rule.key)
-      if (rule.required && (isUndefined(value) || isNull(value))) {
+      if (rule.required && (!isDefined(value) || isNull(value))) {
         errors.push(`rule.required:${rule.message}`)
         continue
       }
-      if (isUndefined(value) || isNull(value) || (rule.allowEmpty && isEmpty(value))) {
+      if (!isDefined(value) || isNull(value) || (rule.allowEmpty && isEmpty(value))) {
         continue
       }
       if (rule.type && !this.#checkType(value, rule.type)) {

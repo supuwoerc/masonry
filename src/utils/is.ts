@@ -1,17 +1,5 @@
-import {
-  isArray,
-  isBoolean,
-  isDate,
-  isFunction,
-  isNaN,
-  isNull,
-  isNumber,
-  isObject,
-  isPlainObject,
-  isRegExp,
-  isString,
-  isUndefined,
-} from 'lodash-es'
+import { isBoolean, isFunction, isNumber, isObject, isString } from '@supuwoerc/toolkit'
+import { isArray, isDate, isNaN, isNull, isPlainObject, isRegExp, isUndefined } from 'lodash-es'
 
 /**
  * 可检测的类型枚举

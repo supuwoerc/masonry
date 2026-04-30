@@ -1,4 +1,4 @@
-import { isFunction, isUndefined } from 'lodash-es'
+import { isDefined, isFunction } from '@supuwoerc/toolkit'
 
 /**
  * 检测当前环境是否支持Canvas API
@@ -8,7 +8,7 @@ import { isFunction, isUndefined } from 'lodash-es'
  *          Returns true if Canvas is supported, otherwise false
  */
 export function isCanvasSupported(): boolean {
-  if (isUndefined(HTMLCanvasElement)) {
+  if (!isDefined(HTMLCanvasElement)) {
     return false
   }
   const canvas = document.createElement('canvas')
@@ -24,7 +24,7 @@ export function isCanvasSupported(): boolean {
  *          Returns true if Web Worker is supported, otherwise false
  */
 export function isWorkerSupported(): boolean {
-  if (isUndefined(window) || isUndefined(Worker)) {
+  if (!isDefined(window) || !isDefined(Worker)) {
     return false
   }
   try {
@@ -47,7 +47,7 @@ export function isWorkerSupported(): boolean {
  *          Returns true if supported, otherwise false
  */
 export function isOffscreenCanvasSupported(): boolean {
-  if (isUndefined(HTMLCanvasElement)) {
+  if (!isDefined(HTMLCanvasElement)) {
     return false
   }
   if (!isFunction(HTMLCanvasElement.prototype.transferControlToOffscreen)) {

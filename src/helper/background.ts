@@ -1,5 +1,5 @@
 import type { GradientBackground } from '../core/types'
-import { isString } from 'lodash-es'
+import { isString } from '@supuwoerc/toolkit'
 
 /**
  * 根据背景配置创建 Canvas 填充样式

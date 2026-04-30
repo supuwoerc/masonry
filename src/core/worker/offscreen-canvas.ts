@@ -2,6 +2,7 @@ import type { MasonryConfiguration } from '../masonry'
 import type { Core, Interaction, LayoutStrategy, LoadMoreConfig } from '../types'
 import type {
   GridItem,
+  ImageLoadedPayload,
   LoadMoreResponsePayload,
   Message,
   RenderLoadingResponsePayload,
@@ -26,10 +27,16 @@ import { MessageType } from './protocol'
  */
 export interface WorkerConfiguration extends Omit<
   MasonryConfiguration,
-  'core' | 'interaction' | 'loader' | 'placeholderRenderer' | 'events'
+  'core' | 'interaction' | 'loader' | 'placeholderRenderer' | 'events' | 'imageLoad'
 > {
   /** 核心配置（无 canvas、items 固定为 ImageBitmap[]）| Core config (no canvas, items are ImageBitmap[]) */
-  core: Omit<Core, 'canvas' | 'items'> & { items?: ImageBitmap[] }
+  core: Omit<Core, 'canvas' | 'items'> & {
+    items?: ImageBitmap[]
+    /** 待加载项的数量（用于预分配占位符）| Number of items to load (for pre-allocating placeholders) */
+    itemCount?: number
+    /** 待加载项的原始尺寸（用于瀑布流布局）| Original sizes of items to load (for masonry layout) */
+    itemSizes?: Array<{ width?: number; height?: number }>
+  }
   /** 交互配置（无 onClick 回调）| Interaction config (no onClick callback) */
   interaction?: Omit<Interaction, 'onClick'>
   /** 加载配置（无 loadMore 函数）| Loader config (no loadMore function) */
@@ -120,6 +127,9 @@ class OffscreenCanvasWorker {
       case MessageType.LoadMoreResponse:
         this.#handleLoadMoreResponse(payload as LoadMoreResponsePayload)
         break
+      case MessageType.ImageLoaded:
+        this.#handleImageLoaded(payload as ImageLoadedPayload)
+        break
       default:
         throw new MasonryError(`unknown message type: ${type}`)
     }
@@ -174,6 +184,20 @@ class OffscreenCanvasWorker {
             status: 'loaded',
             x: 0,
             y: 0,
+            itemIndex,
+          }
+        })
+      } else if (this.#config.core.itemCount) {
+        const sizes = this.#config.core.itemSizes ?? []
+        this.#allItems = Array.from({ length: this.#config.core.itemCount }, (_, itemIndex) => {
+          return {
+            id: nanoid(),
+            image: null,
+            status: 'loading' as const,
+            x: 0,
+            y: 0,
+            width: sizes[itemIndex]?.width,
+            height: sizes[itemIndex]?.height,
             itemIndex,
           }
         })
@@ -329,6 +353,19 @@ class OffscreenCanvasWorker {
       this.#performLayout()
       this.#handleRerender()
     }
+  }
+
+  #handleImageLoaded(payload: ImageLoadedPayload) {
+    const item = this.#allItems[payload.index]
+    if (!item) {
+      return
+    }
+    item.image = payload.bitmap
+    item.status = 'loaded'
+    item.width = payload.width
+    item.height = payload.height
+    this.#performLayout()
+    this.#handleRerender()
   }
 
   async #handleRenderLoading(payload: RenderLoadingResponsePayload) {

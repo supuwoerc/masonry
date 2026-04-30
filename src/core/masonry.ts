@@ -1,5 +1,13 @@
-import type { Core, Interaction, LoadMoreConfig, PlaceholderRenderer } from './types'
 import type {
+  Core,
+  ImageLoadConfig,
+  Interaction,
+  ItemDescriptor,
+  LoadMoreConfig,
+  PlaceholderRenderer,
+} from './types'
+import type {
+  ImageLoadedPayload,
   LoadMoreResponsePayload,
   Message,
   MessagePayload,
@@ -7,13 +15,13 @@ import type {
   ScrollPayload,
   SetupPayload,
 } from './worker/protocol'
-import { debounce, Queue } from '@supuwoerc/toolkit'
-import { isFunction } from 'lodash-es'
+import { debounce, isFunction, Queue } from '@supuwoerc/toolkit'
 import { nanoid } from 'nanoid'
 import { Validator } from '@/helper/validator'
 import { isCanvasSupported, isWorkerSupported } from '@/utils/canvas'
 import { defaultPlaceholderRenderer } from './constant'
 import { MasonryError } from './error'
+import { ImageLoader } from './image-loader'
 import { configurationRules } from './rules'
 import { MessageType } from './worker/protocol'
 import 'path2d-polyfill'
@@ -31,6 +39,9 @@ export interface MasonryConfiguration {
 
   /** 无限滚动加载配置 | Infinite scroll loader configuration */
   loader?: LoadMoreConfig
+
+  /** 图片加载配置 | Image loading configuration */
+  imageLoad?: ImageLoadConfig
 
   /** 占位符渲染器 | Placeholder renderer */
   placeholderRenderer?: PlaceholderRenderer
@@ -91,6 +102,10 @@ export class Masonry {
     lastY: 0,
   }
 
+  #imageLoader: ImageLoader | null = null
+
+  #pendingUrls: ItemDescriptor[] = []
+
   /** 实例就绪回调 | Instance ready callback */
   onReady: ((ins: Masonry) => void) | null = null
 
@@ -144,7 +159,6 @@ export class Masonry {
         config: {
           core: {
             backgroundColor: this.#config.core.backgroundColor,
-            items: this.#config.core.items as ImageBitmap[] | undefined,
             style: this.#config.core.style,
             layout: this.#config.core.layout,
             limit: this.#config.core.limit,
@@ -152,6 +166,20 @@ export class Masonry {
           },
         },
         dpr: window.devicePixelRatio || 1,
+      }
+      const items = this.#config.core.items
+      if (items?.length) {
+        if (items[0] instanceof ImageBitmap) {
+          payload.config.core.items = items as ImageBitmap[]
+        } else {
+          const descriptors = this.#normalizeItems(items as string[] | ItemDescriptor[])
+          payload.config.core.itemCount = descriptors.length
+          payload.config.core.itemSizes = descriptors.map((d) => ({
+            width: d.width,
+            height: d.height,
+          }))
+          this.#pendingUrls = descriptors
+        }
       }
       if (this.#config.interaction) {
         payload.config.interaction = {
@@ -177,6 +205,7 @@ export class Masonry {
       case MessageType.SetupResponse:
         this.onReady?.(this)
         this.#sendMessage(MessageType.Render, null)
+        this.#loadImages()
         break
       case MessageType.LoadMore:
         this.#handleLoadMoreTask()
@@ -298,6 +327,41 @@ export class Masonry {
   }
 
   /**
+   * 标准化 items 为 ItemDescriptor 数组
+   * Normalize items to ItemDescriptor array
+   */
+  #normalizeItems(items: string[] | ItemDescriptor[]): ItemDescriptor[] {
+    return items.map((item) => {
+      if (typeof item === 'string') {
+        return { url: item }
+      }
+      return item
+    })
+  }
+
+  /**
+   * 启动图片异步加载
+   * Start asynchronous image loading
+   */
+  #loadImages() {
+    if (this.#pendingUrls.length === 0) {
+      return
+    }
+    this.#imageLoader = new ImageLoader(this.#config.imageLoad)
+    const batch = this.#pendingUrls.map((desc, index) => ({
+      url: desc.url,
+      index,
+      width: desc.width,
+      height: desc.height,
+    }))
+    this.#imageLoader.loadBatch(batch, (index, bitmap, width, height) => {
+      const payload: ImageLoadedPayload = { index, bitmap, width, height }
+      this.#sendMessage(MessageType.ImageLoaded, payload, [bitmap])
+    })
+    this.#pendingUrls = []
+  }
+
+  /**
    * 初始化滚动事件监听
    * Initialize scroll event listeners
    */
@@ -358,6 +422,7 @@ export class Masonry {
       this.#worker.terminate()
       this.#worker = null
     }
+    this.#imageLoader?.dispose()
     this.#scrollAbort.abort()
     this.#resizeObserver.disconnect()
     this.#config.placeholderRenderer?.dispose()

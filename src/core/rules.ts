@@ -1,6 +1,6 @@
 import type { MasonryConfiguration } from './masonry'
 import type { Rule } from '@/helper/validator'
-import { isFunction, isUndefined } from 'lodash-es'
+import { isDefined, isFunction } from '@supuwoerc/toolkit'
 
 /**
  * Masonry 配置验证规则集合
@@ -81,7 +81,7 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
   },
   {
     key: 'interaction.onClick',
-    validate: (v) => isUndefined(v) || isFunction(v),
+    validate: (v) => !isDefined(v) || isFunction(v),
     message: 'onClick must be a function',
     allowEmpty: true,
   },
@@ -111,13 +111,13 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
 
   {
     key: 'events.onReady',
-    validate: (v) => isUndefined(v) || isFunction(v),
+    validate: (v) => !isDefined(v) || isFunction(v),
     message: 'onReady must be a function',
     allowEmpty: true,
   },
   {
     key: 'events.onError',
-    validate: (v) => isUndefined(v) || isFunction(v),
+    validate: (v) => !isDefined(v) || isFunction(v),
     message: 'onError must be a function',
     allowEmpty: true,
   },
