@@ -164,14 +164,14 @@ export interface RenderLoadingResponsePayload {
 }
 
 /**
- * 滚动偏移负载（主线程→Worker）
- * Scroll offset payload (main thread → worker)
+ * 滚动增量负载（主线程→Worker）
+ * Scroll delta payload (main thread → worker)
  */
 export interface ScrollPayload {
-  /** 水平滚动偏移量（px）| Horizontal scroll offset (px) */
-  offsetX: number
-  /** 垂直滚动偏移量（px）| Vertical scroll offset (px) */
-  offsetY: number
+  /** 水平滚动增量（px）| Horizontal scroll delta (px) */
+  deltaX: number
+  /** 垂直滚动增量（px）| Vertical scroll delta (px) */
+  deltaY: number
 }
 
 /**

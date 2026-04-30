@@ -4,6 +4,7 @@ import type {
   Message,
   MessagePayload,
   ResizePayload,
+  ScrollPayload,
   SetupPayload,
 } from './worker/protocol'
 import { debounce, Queue } from '@supuwoerc/toolkit'
@@ -82,6 +83,14 @@ export class Masonry {
 
   #placeholderRenderer: PlaceholderRenderer = defaultPlaceholderRenderer
 
+  #scrollAbort = new AbortController()
+
+  #pointerState: { down: boolean; lastX: number; lastY: number } = {
+    down: false,
+    lastX: 0,
+    lastY: 0,
+  }
+
   /** 实例就绪回调 | Instance ready callback */
   onReady: ((ins: Masonry) => void) | null = null
 
@@ -111,6 +120,7 @@ export class Masonry {
     this.#initPlaceholderRenderer(this.#config)
     this.#initEvents(this.#config)
     this.#initObserver()
+    this.#initScrollListeners()
     if (this.#useWorker) {
       this.#initWorker()
     }
@@ -288,6 +298,58 @@ export class Masonry {
   }
 
   /**
+   * 初始化滚动事件监听
+   * Initialize scroll event listeners
+   */
+  #initScrollListeners() {
+    const canvas = this.#config.core.canvas
+    const signal = this.#scrollAbort.signal
+
+    canvas.addEventListener('wheel', this.#handleWheel.bind(this), { passive: false, signal })
+    canvas.addEventListener('pointerdown', this.#handlePointerDown.bind(this), { signal })
+    canvas.addEventListener('pointermove', this.#handlePointerMove.bind(this), { signal })
+    canvas.addEventListener('pointerup', this.#handlePointerUp.bind(this), { signal })
+    canvas.addEventListener('pointercancel', this.#handlePointerUp.bind(this), { signal })
+  }
+
+  #handleWheel(e: WheelEvent) {
+    e.preventDefault()
+    const scroll = this.#config.interaction?.scroll
+    const deltaX = scroll?.disabled?.horizontal ? 0 : e.deltaX
+    const deltaY = scroll?.disabled?.vertical ? 0 : e.deltaY
+    if (deltaX !== 0 || deltaY !== 0) {
+      const payload: ScrollPayload = { deltaX, deltaY }
+      this.#sendMessage(MessageType.Scroll, payload)
+    }
+  }
+
+  #handlePointerDown(e: PointerEvent) {
+    this.#pointerState.down = true
+    this.#pointerState.lastX = e.clientX
+    this.#pointerState.lastY = e.clientY
+    ;(e.target as HTMLElement)?.setPointerCapture?.(e.pointerId)
+  }
+
+  #handlePointerMove(e: PointerEvent) {
+    if (!this.#pointerState.down) {
+      return
+    }
+    const scroll = this.#config.interaction?.scroll
+    const dx = scroll?.disabled?.horizontal ? 0 : this.#pointerState.lastX - e.clientX
+    const dy = scroll?.disabled?.vertical ? 0 : this.#pointerState.lastY - e.clientY
+    this.#pointerState.lastX = e.clientX
+    this.#pointerState.lastY = e.clientY
+    if (dx !== 0 || dy !== 0) {
+      const payload: ScrollPayload = { deltaX: dx, deltaY: dy }
+      this.#sendMessage(MessageType.Scroll, payload)
+    }
+  }
+
+  #handlePointerUp(_e: PointerEvent) {
+    this.#pointerState.down = false
+  }
+
+  /**
    * 销毁实例，释放所有资源
    * Destroy the instance and release all resources
    */
@@ -296,6 +358,7 @@ export class Masonry {
       this.#worker.terminate()
       this.#worker = null
     }
+    this.#scrollAbort.abort()
     this.#resizeObserver.disconnect()
     this.#config.placeholderRenderer?.dispose()
   }

@@ -84,6 +84,6 @@ export function isTargetType(value: any, type: CheckableType): boolean {
     case 'set':
       return value instanceof Set
     default:
-      throw new Error(`不支持的类型检查: ${type}`)
+      throw new Error(`Unsupported type checking: ${type}`)
   }
 }

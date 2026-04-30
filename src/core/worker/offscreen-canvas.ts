@@ -8,6 +8,7 @@ import type {
   RequestPayload,
   ResizePayload,
   ResponsePayload,
+  ScrollPayload,
   SetupPayload,
 } from './protocol'
 import { Queue } from '@supuwoerc/toolkit'
@@ -75,6 +76,14 @@ class OffscreenCanvasWorker {
 
   #isRunning = false
 
+  #scrollX = 0
+  #scrollY = 0
+  #velocityX = 0
+  #velocityY = 0
+  #contentWidth = 0
+  #contentHeight = 0
+  #isInertiaActive = false
+
   constructor() {
     this.#setupMessageHandler()
   }
@@ -102,6 +111,9 @@ class OffscreenCanvasWorker {
       case MessageType.Resize:
         this.#handleResize(payload as ResizePayload)
         break
+      case MessageType.Scroll:
+        this.#handleScroll(payload as ScrollPayload)
+        break
       case MessageType.RenderLoadingResponse:
         this.#handleRenderLoading(payload as RenderLoadingResponsePayload)
         break
@@ -125,6 +137,9 @@ class OffscreenCanvasWorker {
     }
     const result = this.#layoutStrategy.calculate(input)
     this.#gridItems = result.items
+    this.#contentWidth = result.contentWidth
+    this.#contentHeight = result.contentHeight
+    this.#clampScroll()
     this.#sendMessage(MessageType.LayoutUpdated, {
       contentWidth: result.contentWidth,
       contentHeight: result.contentHeight,
@@ -203,15 +218,62 @@ class OffscreenCanvasWorker {
         this.#clearBackground()
         this.#handleRenderBackground()
         this.#copyBackground()
+        this.#context.save()
+        this.#context.translate(-this.#scrollX, -this.#scrollY)
         this.#renderGridItems(this.#gridItems)
+        this.#context.restore()
       } catch (error) {
         this.#sendError(error)
       }
     }
   }
 
+  #handleScroll(payload: ScrollPayload) {
+    const scroll = this.#config?.interaction?.scroll
+    const disableH = scroll?.disabled?.horizontal ?? false
+    const disableV = scroll?.disabled?.vertical ?? false
+    const dx = disableH ? 0 : payload.deltaX
+    const dy = disableV ? 0 : payload.deltaY
+    this.#scrollX += dx
+    this.#scrollY += dy
+    this.#clampScroll()
+    const inertia = scroll?.inertia ?? true
+    if (inertia) {
+      this.#velocityX = dx
+      this.#velocityY = dy
+      this.#isInertiaActive = true
+    }
+    this.#handleRerender()
+  }
+
+  #clampScroll() {
+    const maxX = Math.max(0, this.#contentWidth - this.#clientWidth)
+    const maxY = Math.max(0, this.#contentHeight - this.#clientHeight)
+    this.#scrollX = Math.max(0, Math.min(this.#scrollX, maxX))
+    this.#scrollY = Math.max(0, Math.min(this.#scrollY, maxY))
+  }
+
+  #tickInertia() {
+    const friction = 0.95
+    const threshold = 0.5
+    this.#velocityX *= friction
+    this.#velocityY *= friction
+    this.#scrollX += this.#velocityX
+    this.#scrollY += this.#velocityY
+    this.#clampScroll()
+    if (Math.abs(this.#velocityX) < threshold && Math.abs(this.#velocityY) < threshold) {
+      this.#velocityX = 0
+      this.#velocityY = 0
+      this.#isInertiaActive = false
+    }
+  }
+
   #startAnimationLoop() {
     const renderFrame = () => {
+      if (this.#isInertiaActive) {
+        this.#tickInertia()
+        this.#handleRerender()
+      }
       const loadingItems = this.#gridItems.filter((item) => item.status !== 'loaded')
       const ids = loadingItems.map((item) => item.id)
       if (ids.length > 0) {
