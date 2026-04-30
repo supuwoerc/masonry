@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
-import path from 'node:path'
 import { defineConfig } from 'vite'
+import checker from 'vite-plugin-checker'
 import dts from 'vite-plugin-dts'
 
 export default defineConfig({
@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: './dist',
     lib: {
-      entry: path.resolve(__dirname, 'src/index.ts'),
+      entry: 'src/index.ts',
       formats: ['es', 'cjs'],
       fileName: (format) => `index.${format}.js`,
     },
@@ -32,6 +32,14 @@ export default defineConfig({
     },
   },
   plugins: [
+    checker({
+      enableBuild: true,
+      typescript: true,
+      eslint: {
+        useFlatConfig: true,
+        lintCommand: 'eslint .',
+      },
+    }),
     dts({
       insertTypesEntry: true,
       rollupTypes: true,
@@ -45,14 +53,11 @@ export default defineConfig({
     },
     setupFiles: ['./setup-test.ts'],
     globals: true,
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
   },
   resolve: {
-    conditions: ['browser'],
+    conditions: ['module', 'browser'],
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': `${import.meta.dirname}/src`,
     },
   },
 })
