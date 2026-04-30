@@ -327,3 +327,42 @@ export interface PlaceholderRenderer {
    */
   remove: (id: string) => void
 }
+
+/**
+ * 布局计算输入
+ * Layout calculation input
+ */
+export interface LayoutInput {
+  /** 待布局的网格项 | Grid items to lay out */
+  items: GridItem[]
+  /** 容器宽度（CSS 像素）| Container width (CSS pixels) */
+  containerWidth: number
+  /** 容器高度（CSS 像素）| Container height (CSS pixels) */
+  containerHeight: number
+  /** 网格项样式配置 | Grid item style configuration */
+  style: GridItemStyle
+}
+
+/**
+ * 布局计算结果
+ * Layout calculation result
+ */
+export interface LayoutResult {
+  /** 已定位的网格项 | Positioned grid items */
+  items: GridItem[]
+  /** 内容总宽度 | Total content width */
+  contentWidth: number
+  /** 内容总高度 | Total content height */
+  contentHeight: number
+  /** 列数 | Number of columns */
+  columns: number
+}
+
+/**
+ * 布局策略接口
+ * Layout strategy interface
+ */
+export interface LayoutStrategy {
+  /** 计算布局 | Calculate layout */
+  calculate: (input: LayoutInput) => LayoutResult
+}

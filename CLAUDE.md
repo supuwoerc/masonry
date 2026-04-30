@@ -67,3 +67,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## 5. Interaction Guidelines
 
 - If the user does not specify a language, answer the question in Chinese.
+- The methods and key content that need to be added require jsdoc comments, both in Chinese and English.

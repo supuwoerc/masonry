@@ -136,6 +136,7 @@ export class Masonry {
             backgroundColor: this.#config.core.backgroundColor,
             items: this.#config.core.items as ImageBitmap[] | undefined,
             style: this.#config.core.style,
+            layout: this.#config.core.layout,
             limit: this.#config.core.limit,
             timeout: this.#config.core.timeout,
           },

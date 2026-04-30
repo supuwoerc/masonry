@@ -1,5 +1,5 @@
 import type { MasonryConfiguration } from '../masonry'
-import type { Core, Interaction, LoadMoreConfig } from '../types'
+import type { Core, Interaction, LayoutStrategy, LoadMoreConfig } from '../types'
 import type {
   GridItem,
   LoadMoreResponsePayload,
@@ -15,6 +15,8 @@ import { isError, toString } from 'lodash-es'
 import { nanoid } from 'nanoid'
 import { createBackgroundStyle } from '@/helper/background'
 import { MasonryError } from '../error'
+import { GridLayout } from '../layout/grid-layout'
+import { MasonryLayout } from '../layout/masonry-layout'
 import { MessageType } from './protocol'
 
 /**
@@ -61,25 +63,17 @@ class OffscreenCanvasWorker {
   #dpr = 1
   #config!: WorkerConfiguration
 
-  #blockWidth = 0
-  #blockHeight = 0
-  #columns = 0
-  #rows = 0
+  #layoutStrategy!: LayoutStrategy
 
   #allItems: GridItem[] = []
 
-  #gridItems: GridItem[][] = []
+  #gridItems: GridItem[] = []
 
   #lastLoadingIds = new Set<string>()
 
   #queue = new Queue<(() => void) | (() => Promise<void>)>()
 
   #isRunning = false
-
-  #pagination = {
-    page: 1,
-    hasMore: true,
-  }
 
   constructor() {
     this.#setupMessageHandler()
@@ -119,15 +113,22 @@ class OffscreenCanvasWorker {
     }
   }
 
-  #calculateSize() {
+  #performLayout() {
     if (!this.#config?.core.style) {
       return
     }
-    const { width: itemWidth, height: itemHeight, gap = 0 } = this.#config.core.style
-    this.#blockWidth = itemWidth + gap
-    this.#blockHeight = itemHeight + gap
-    this.#columns = Math.ceil(this.#clientWidth / this.#blockWidth)
-    this.#rows = Math.ceil(this.#clientHeight / this.#blockHeight)
+    const input = {
+      items: this.#allItems,
+      containerWidth: this.#clientWidth,
+      containerHeight: this.#clientHeight,
+      style: this.#config.core.style,
+    }
+    const result = this.#layoutStrategy.calculate(input)
+    this.#gridItems = result.items
+    this.#sendMessage(MessageType.LayoutUpdated, {
+      contentWidth: result.contentWidth,
+      contentHeight: result.contentHeight,
+    })
   }
 
   #handleSetup(payload: SetupPayload) {
@@ -148,6 +149,8 @@ class OffscreenCanvasWorker {
       this.#backgroundContext.imageSmoothingEnabled = true
       this.#backgroundContext.imageSmoothingQuality = 'high'
       this.#config = payload.config
+      const mode = this.#config.core.layout ?? 'grid'
+      this.#layoutStrategy = mode === 'masonry' ? new MasonryLayout() : new GridLayout()
       if (this.#config.core.items?.length) {
         this.#allItems = this.#config.core.items.map((item, itemIndex) => {
           return {
@@ -160,8 +163,7 @@ class OffscreenCanvasWorker {
           }
         })
       }
-      this.#calculateSize()
-      this.#generateGridItems(this.#allItems)
+      this.#performLayout()
       this.#runTask()
       this.#sendMessage(MessageType.SetupResponse, null)
     } catch (error) {
@@ -201,7 +203,7 @@ class OffscreenCanvasWorker {
         this.#clearBackground()
         this.#handleRenderBackground()
         this.#copyBackground()
-        this.#renderGridItems(this.#gridItems.flat())
+        this.#renderGridItems(this.#gridItems)
       } catch (error) {
         this.#sendError(error)
       }
@@ -210,7 +212,7 @@ class OffscreenCanvasWorker {
 
   #startAnimationLoop() {
     const renderFrame = () => {
-      const loadingItems = this.#gridItems.flat().filter((item) => item.status !== 'loaded')
+      const loadingItems = this.#gridItems.filter((item) => item.status !== 'loaded')
       const ids = loadingItems.map((item) => item.id)
       if (ids.length > 0) {
         const idsChanged =
@@ -231,10 +233,6 @@ class OffscreenCanvasWorker {
   }
 
   #handleLoadMoreResponse(payload: LoadMoreResponsePayload) {
-    this.#pagination = {
-      page: payload.page,
-      hasMore: payload.hasMore,
-    }
     if (payload.data.length > 0) {
       const newItems = payload.data.map((bitmap, i) => ({
         id: nanoid(),
@@ -245,7 +243,7 @@ class OffscreenCanvasWorker {
         itemIndex: this.#allItems.length + i,
       }))
       this.#allItems.push(...newItems)
-      this.#generateGridItems(this.#allItems)
+      this.#performLayout()
       this.#handleRerender()
     }
   }
@@ -256,7 +254,7 @@ class OffscreenCanvasWorker {
     }
     try {
       const loadingItems: GridItem[] = []
-      const modify = this.#gridItems.flat().filter((cell) => {
+      const modify = this.#gridItems.filter((cell) => {
         return cell.id === payload.id && cell.status === 'loading'
       })
       if (modify.length > 0) {
@@ -271,54 +269,43 @@ class OffscreenCanvasWorker {
     }
   }
 
-  #generateGridItems(items: GridItem[]) {
-    this.#gridItems = Array.from({ length: this.#rows }, (_, row) =>
-      Array.from({ length: this.#columns }, (_, column) => {
-        const x = column * this.#blockWidth
-        const y = row * this.#blockHeight
-        const index = row * this.#columns + column
-        const itemIndex = items.length > 0 ? index % items.length : 0
-        const patch = items[itemIndex] || null
-        return {
-          id: patch?.id ?? nanoid(),
-          image: patch?.image ?? null,
-          status: patch?.status ?? 'loading',
-          x,
-          y,
-          itemIndex,
-        }
-      }),
-    )
-  }
-
   #renderGridItems(gridItems: GridItem[]): void {
     if (!this.#context || !this.#config?.core.style || gridItems.length === 0) {
       return
     }
-    const { width: itemWidth, height: itemHeight, radius = 0 } = this.#config.core.style
+    const { width: defaultWidth, height: defaultHeight, radius = 0 } = this.#config.core.style
     if (radius > 0) {
-      this.#renderWithRadius(gridItems, itemWidth, itemHeight, radius)
+      this.#renderWithRadius(gridItems, defaultWidth, defaultHeight, radius)
     } else {
-      this.#renderWithoutRadius(gridItems, itemWidth, itemHeight)
+      this.#renderWithoutRadius(gridItems, defaultWidth, defaultHeight)
     }
   }
 
-  #renderWithoutRadius(items: GridItem[], width: number, height: number): void {
+  #renderWithoutRadius(items: GridItem[], defaultWidth: number, defaultHeight: number): void {
     for (const item of items) {
       if (item.image) {
-        this.#context?.drawImage(item.image, item.x, item.y, width, height)
+        const w = item.width ?? defaultWidth
+        const h = item.height ?? defaultHeight
+        this.#context?.drawImage(item.image, item.x, item.y, w, h)
       }
     }
   }
 
-  #renderWithRadius(items: GridItem[], width: number, height: number, radius: number): void {
+  #renderWithRadius(
+    items: GridItem[],
+    defaultWidth: number,
+    defaultHeight: number,
+    radius: number,
+  ): void {
     for (const item of items) {
       if (item.image) {
+        const w = item.width ?? defaultWidth
+        const h = item.height ?? defaultHeight
         this.#context?.save()
         this.#context?.beginPath()
-        this.#context?.roundRect(item.x, item.y, width, height, radius)
+        this.#context?.roundRect(item.x, item.y, w, h, radius)
         this.#context?.clip()
-        this.#context?.drawImage(item.image, item.x, item.y, width, height)
+        this.#context?.drawImage(item.image, item.x, item.y, w, h)
         this.#context?.restore()
       }
     }
@@ -343,10 +330,7 @@ class OffscreenCanvasWorker {
         this.#clientHeight = payload.clientHeight
         this.#context.setTransform(dpr, 0, 0, dpr, 0, 0)
         this.#backgroundContext.setTransform(dpr, 0, 0, dpr, 0, 0)
-        this.#calculateSize()
-        // this.#generateGridItems(this.#allItems)
-        this.#generateGridItems([])
-        // TODO:重新渲染
+        this.#performLayout()
         this.#handleRerender()
       }
     } catch (error) {
