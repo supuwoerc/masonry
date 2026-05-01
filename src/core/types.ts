@@ -222,6 +222,12 @@ export interface ScrollConfig {
    */
   threshold?: number
   /**
+   * 惯性滚动摩擦系数（0-1），值越大滑动越远
+   * Inertia scrolling friction coefficient (0-1), higher value means longer slide
+   * @default 0.95
+   */
+  friction?: number
+  /**
    * 数据加载完毕后是否启用无缝循环滚动
    * Whether to enable seamless loop scrolling when all data is loaded
    * @default true

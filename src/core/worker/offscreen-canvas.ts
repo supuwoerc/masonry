@@ -482,7 +482,7 @@ class OffscreenCanvasWorker {
   }
 
   #tickInertia() {
-    const friction = 0.95
+    const friction = this.#config?.interaction?.scroll?.friction ?? 0.95
     const threshold = 0.5
     this.#velocityX *= friction
     this.#velocityY *= friction

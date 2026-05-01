@@ -98,6 +98,13 @@ export const configurationRules: Rule<MasonryConfiguration>[] = [
     allowEmpty: true,
   },
   {
+    key: 'interaction.scroll.friction',
+    type: 'number',
+    validate: (v) => !isDefined(v) || (v > 0 && v < 1),
+    message: 'friction must be a number between 0 and 1 (exclusive)',
+    allowEmpty: true,
+  },
+  {
     key: 'loader.pageSize',
     type: 'number',
     min: 1,
