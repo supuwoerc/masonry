@@ -1,5 +1,5 @@
 import type { CheckableType } from '@/utils/is'
-import { isDefined, isNumber } from '@supuwoerc/toolkit'
+import { isBoolean, isDefined, isNumber } from '@supuwoerc/toolkit'
 import { get, isArray, isEmpty, isNull } from 'lodash-es'
 import { isTargetType } from '@/utils/is'
 
@@ -131,7 +131,11 @@ export class Validator<T extends object> {
         errors.push(`rule.required:${rule.message}`)
         continue
       }
-      if (!isDefined(value) || isNull(value) || (rule.allowEmpty && isEmpty(value))) {
+      if (
+        !isDefined(value) ||
+        isNull(value) ||
+        (rule.allowEmpty && !isNumber(value) && !isBoolean(value) && isEmpty(value))
+      ) {
         continue
       }
       if (rule.type && !this.#checkType(value, rule.type)) {
