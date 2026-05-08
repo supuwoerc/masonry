@@ -148,13 +148,13 @@ src/
 
 | 序号 | 文档 | 内容概述 |
 |------|------|---------|
-| 01 | [整体架构与设计模式](./01-architecture-overview.zh-CN.md) | 双线程模型、设计模式、关键技术决策 |
-| 02 | [Builder 构建器与配置验证](./02-builder-and-configuration.zh-CN.md) | 链式 API、类型系统、验证框架 |
-| 03 | [主线程编排与事件协调](./03-main-thread-orchestration.zh-CN.md) | Masonry 类生命周期、消息路由、事件处理 |
-| 04 | [Worker 通信协议](./04-worker-communication.zh-CN.md) | 消息结构、类型枚举、Transferable 传输 |
-| 05 | [OffscreenCanvas 渲染引擎](./05-offscreen-rendering-engine.zh-CN.md) | 渲染循环、视口裁剪、惯性滚动、无缝循环 |
-| 06 | [布局策略](./06-layout-strategies.zh-CN.md) | Grid/Masonry 算法、Strategy 模式 |
-| 07 | [图片加载与占位符动画](./07-image-loading-and-placeholders.zh-CN.md) | 并发加载、重试策略、动画原理 |
+| 01 | [整体架构与设计模式](./01-architecture-overview.md) | 双线程模型、设计模式、关键技术决策 |
+| 02 | [Builder 构建器与配置验证](./02-builder-and-configuration.md) | 链式 API、类型系统、验证框架 |
+| 03 | [主线程编排与事件协调](./03-main-thread-orchestration.md) | Masonry 类生命周期、消息路由、事件处理 |
+| 04 | [Worker 通信协议](./04-worker-communication.md) | 消息结构、类型枚举、Transferable 传输 |
+| 05 | [OffscreenCanvas 渲染引擎](./05-offscreen-rendering-engine.md) | 渲染循环、视口裁剪、惯性滚动、无缝循环 |
+| 06 | [布局策略](./06-layout-strategies.md) | Grid/Masonry 算法、Strategy 模式 |
+| 07 | [图片加载与占位符动画](./07-image-loading-and-placeholders.md) | 并发加载、重试策略、动画原理 |
 
 ---
 

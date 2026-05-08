@@ -2,5 +2,6 @@
   "entryPoints": ["./src/index.ts"],
   "entryPointStrategy": "expand",
   "out": "docs",
-  "exclude": ["**/*.test.ts", "**/test/**", "src/vite-env.d.ts"]
+  "exclude": ["**/*.test.ts", "**/test/**", "src/vite-env.d.ts"],
+  "projectDocuments": ["./src/roadmap/**/*.md"]
 }

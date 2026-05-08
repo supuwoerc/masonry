@@ -148,13 +148,13 @@ Recommended reading order, from macro to micro:
 
 | # | Document | Summary |
 |---|----------|---------|
-| 01 | [Architecture & Design Patterns](./01-architecture-overview.en.md) | Dual-thread model, design patterns, key technical decisions |
-| 02 | [Builder & Configuration](./02-builder-and-configuration.en.md) | Fluent API, type system, validation framework |
-| 03 | [Main Thread Orchestration](./03-main-thread-orchestration.en.md) | Masonry class lifecycle, message routing, event handling |
-| 04 | [Worker Communication Protocol](./04-worker-communication.en.md) | Message structure, type enum, Transferable transfer |
-| 05 | [OffscreenCanvas Rendering Engine](./05-offscreen-rendering-engine.en.md) | Render loop, viewport culling, inertia scrolling, seamless loop |
-| 06 | [Layout Strategies](./06-layout-strategies.en.md) | Grid/Masonry algorithms, Strategy pattern |
-| 07 | [Image Loading & Placeholders](./07-image-loading-and-placeholders.en.md) | Concurrent loading, retry strategy, animation principles |
+| 01 | [Architecture & Design Patterns](./01-architecture-overview.md) | Dual-thread model, design patterns, key technical decisions |
+| 02 | [Builder & Configuration](./02-builder-and-configuration.md) | Fluent API, type system, validation framework |
+| 03 | [Main Thread Orchestration](./03-main-thread-orchestration.md) | Masonry class lifecycle, message routing, event handling |
+| 04 | [Worker Communication Protocol](./04-worker-communication.md) | Message structure, type enum, Transferable transfer |
+| 05 | [OffscreenCanvas Rendering Engine](./05-offscreen-rendering-engine.md) | Render loop, viewport culling, inertia scrolling, seamless loop |
+| 06 | [Layout Strategies](./06-layout-strategies.md) | Grid/Masonry algorithms, Strategy pattern |
+| 07 | [Image Loading & Placeholders](./07-image-loading-and-placeholders.md) | Concurrent loading, retry strategy, animation principles |
 
 ---
 
