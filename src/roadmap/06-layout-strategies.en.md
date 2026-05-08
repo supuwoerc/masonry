@@ -68,32 +68,56 @@ All elements have equal width and height, arranged in a uniform row-column grid.
 
 ### 2.2 Core Calculation
 
+Here is the complete implementation of `GridLayout.calculate()`:
+
 ```typescript
+// src/core/layout/grid-layout.ts
 calculate(input: LayoutInput): LayoutResult {
   const { items, containerWidth, style } = input
   const { width: itemWidth, height: itemHeight, gap = 0 } = style
 
-  // Block size = element + gap
+  // Block size = element width/height + gap, forming the grid's basic unit
   const blockWidth = itemWidth + gap
   const blockHeight = itemHeight + gap
-
-  // Columns = container width / block width (ceiling)
+  // Columns = container width / block width (ceiling to fit as many as possible)
   const columns = Math.max(1, Math.ceil(containerWidth / blockWidth))
 
-  // Position each element
+  const positioned: GridItem[] = []
+
   for (let i = 0; i < items.length; i++) {
-    const column = i % columns        // Column number
-    const row = Math.floor(i / columns) // Row number
+    const column = i % columns                 // Column index: modulo for row-major order
+    const row = Math.floor(i / columns)        // Row index: integer division
     const x = column * blockWidth
     const y = row * blockHeight
+    const source = items[i]
+
+    positioned.push({
+      id: source?.id ?? nanoid(),              // Preserve existing ID to avoid losing references on re-layout
+      image: source?.image ?? null,            // Preserve loaded bitmap reference
+      status: source?.status ?? 'loading',     // Preserve loading state, prevent state reset
+      x,
+      y,
+      width: itemWidth,                        // Grid mode: all elements have equal width/height
+      height: itemHeight,
+      itemIndex: source?.itemIndex ?? i,       // Maintain data source index for click callbacks
+    })
   }
 
-  // Content dimensions
   const rows = Math.ceil(items.length / columns)
-  contentWidth = columns * blockWidth - gap    // Subtract trailing gap
-  contentHeight = rows * blockHeight - gap     // Subtract trailing gap
+  return {
+    items: positioned,
+    contentWidth: columns * blockWidth - gap,  // Total width minus trailing gap on the right
+    contentHeight: rows * blockHeight - gap,   // Total height minus trailing gap at the bottom
+    columns,
+  }
 }
 ```
+
+**Design Notes**:
+
+- **ID preservation** (`source?.id ?? nanoid()`): On re-layout (e.g., resize, image loaded), existing IDs are reused to ensure the placeholder Map cache can correctly match, avoiding creation of new animation states on every layout pass.
+- **State preservation** (`source?.status ?? 'loading'`): Layout calculation is a pure positional computation with no side effects — it should never alter an item's loading state.
+- **`contentWidth/Height` subtracting gap**: The last element's right/bottom side doesn't need a gap. `columns * blockWidth - gap` removes the redundant trailing spacing.
 
 ### 2.3 Algorithm Visualization
 
@@ -130,58 +154,98 @@ Places each element into the currently shortest column, achieving a variable-hei
 
 ### 3.2 Core Calculation
 
+Here is the complete implementation of `MasonryLayout.calculate()`:
+
 ```typescript
+// src/core/layout/masonry-layout.ts
 calculate(input: LayoutInput): LayoutResult {
   const { items, containerWidth, style } = input
   const { width: itemWidth, gap = 0 } = style
 
   const blockWidth = itemWidth + gap
-  // Columns use Math.floor (masonry doesn't allow container overflow)
+  // Masonry uses Math.floor: ensures all columns fit entirely within the container, no horizontal overflow
   const columns = Math.max(1, Math.floor(containerWidth / blockWidth))
-
-  // Column heights array (tracks current height of each column)
+  // Column heights array: tracks cumulative height of each column to decide where next item goes
   const columnHeights = Array.from<number>({ length: columns }).fill(0)
 
-  for (const item of items) {
-    // Find shortest column
+  // Using map instead of for-loop: each item's positioning depends on current column height state,
+  // map's semantics more clearly express the "input → output" mapping relationship
+  const positioned: GridItem[] = items.map((item, index) => {
+    // Greedy strategy: always place in the shortest column to keep heights balanced
     const shortestCol = columnHeights.indexOf(Math.min(...columnHeights))
-
-    // Element position
     const x = shortestCol * blockWidth
     const y = columnHeights[shortestCol]
 
-    // Calculate element height
+    // Calculate actual render height based on image aspect ratio
     const itemHeight = this.#resolveItemHeight(item, itemWidth, style.height)
-
-    // Update column height
+    // Accumulate column height (item height + gap)
     columnHeights[shortestCol] += itemHeight + gap
-  }
 
-  contentHeight = Math.max(...columnHeights) - gap
-  contentWidth = columns * blockWidth - gap
+    return {
+      id: item.id ?? nanoid(),
+      image: item.image,
+      status: item.status,
+      x,
+      y,
+      width: itemWidth,          // Width is uniform, height varies
+      height: itemHeight,
+      itemIndex: item.itemIndex ?? index,
+    }
+  })
+
+  // Math.max(0, ...) defensive programming: when items is empty, columnHeights are all 0,
+  // and Math.max(...columnHeights) - gap would yield a negative number
+  const contentHeight = Math.max(0, Math.max(...columnHeights) - gap)
+  const contentWidth = Math.max(0, columns * blockWidth - gap)
+
+  return {
+    items: positioned,
+    contentWidth,
+    contentHeight,
+    columns,
+  }
 }
 ```
 
+**Design Notes**:
+
+- **Greedy shortest-column strategy** (`columnHeights.indexOf(Math.min(...columnHeights))`): O(k) time complexity (k=column count). For typical 3-6 column scenarios, performance is sufficient. A min-heap optimization is possible for extremely large column counts, but in practice column count is determined by container width / item width and rarely exceeds 10.
+- **`Math.max(0, ...)` safety wrapper**: Prevents `Math.max(...[]) = -Infinity` for empty arrays, and guards against negative values when subtracting gap.
+- **Key difference from GridLayout**: Grid uses simple `i % columns` row-major ordering, while Masonry uses greedy shortest-column placement, meaning Masonry items are not necessarily arranged left-to-right.
+
 ### 3.3 Height Resolution Priority
 
+`#resolveItemHeight()` implements a three-tier fallback strategy, ensuring a reasonable height value regardless of data completeness:
+
 ```typescript
+// src/core/layout/masonry-layout.ts
 #resolveItemHeight(item: GridItem, targetWidth: number, fallbackHeight: number): number {
-  // 1. Primary: item's own width/height (from ItemDescriptor)
+  // Priority 1: Use pre-declared width/height from ItemDescriptor (metadata from data source)
+  // Condition: both width and height must be > 0 to prevent division by zero
   if (item.width && item.height && item.width > 0 && item.height > 0) {
     return Math.round(targetWidth * (item.height / item.width))
   }
 
-  // 2. Secondary: loaded ImageBitmap dimensions
+  // Priority 2: Use actual pixel dimensions from the loaded ImageBitmap
+  // Effective when image has loaded but no metadata was provided
   if (item.image && item.image.width > 0 && item.image.height > 0) {
     return Math.round(targetWidth * (item.image.height / item.image.width))
   }
 
-  // 3. Fallback: configured default height
+  // Priority 3: Use the configured default height (style.height)
+  // Fallback when image hasn't loaded yet and no preset dimensions exist
   return fallbackHeight
 }
 ```
 
-**Aspect ratio calculation**: `targetWidth * (originalHeight / originalWidth)`, scales to target width while maintaining original aspect ratio.
+**Design Notes**:
+
+- **`Math.round()` for rounding**: Prevents sub-pixel layout drift from accumulating. Without rounding, floating-point column heights would create visual misalignment across rows.
+- **Why check both `width > 0` and `height > 0`**: Prevents `0/width` or `height/0` producing NaN or Infinity, which would corrupt all downstream layout calculations.
+- **Significance of the three-tier fallback**:
+  - Tier 1: Fastest (no need to wait for image loading), for "known-dimensions image list" scenarios
+  - Tier 2: Takes effect when re-layout is triggered after image loading completes
+  - Tier 3: Fallback value ensures initial layout doesn't fail (items display at default height first, then recalculate after loading)
 
 ### 3.4 Algorithm Visualization
 
@@ -235,24 +299,61 @@ Unlike Grid, masonry uses `Math.floor`:
 
 ## 5. Layout Result Usage
 
-After `performLayout()` returns:
+### 5.1 Complete `#performLayout()` Implementation
+
+Layout calculation is triggered by `#performLayout()` in the Worker thread — it bridges the layout strategy and the rendering engine:
 
 ```typescript
+// src/core/worker/offscreen-canvas.ts
 #performLayout() {
+  // Guard: skip if config isn't ready (Setup message may not have arrived yet)
+  if (!this.#config?.core.style) {
+    return
+  }
+
+  // Assemble layout input
+  const input = {
+    items: this.#allItems,             // All data items (both loaded and loading)
+    containerWidth: this.#clientWidth,  // Current container CSS width
+    containerHeight: this.#clientHeight,
+    style: this.#config.core.style,    // Grid item style configuration
+  }
+
+  // Invoke strategy pattern: execute layout based on the strategy selected at initialization
   const result = this.#layoutStrategy.calculate(input)
-  this.#gridItems = result.items          // Update positioned array
-  this.#contentWidth = result.contentWidth // Update content dimensions
+
+  // Update rendering engine state
+  this.#gridItems = result.items            // Replace with positioned items array
+  this.#contentWidth = result.contentWidth  // Update total content dimensions
   this.#contentHeight = result.contentHeight
-  this.#clampScroll()                     // Re-constrain scroll range
-  this.#sendMessage(MessageType.LayoutUpdated, { ... }) // Notify main thread
+
+  // Re-constrain scroll position: content may have shrunk after layout change,
+  // current scroll position might exceed the new maximum range
+  this.#clampScroll()
+
+  // Notify main thread that layout has updated (for onLayoutUpdate callback)
+  this.#sendMessage(MessageType.LayoutUpdated, {
+    contentWidth: result.contentWidth,
+    contentHeight: result.contentHeight,
+  })
 }
 ```
 
-Layout results are directly used for:
-- Viewport culling (x/y determines if within viewport)
-- Element drawing (drawImage uses x/y/width/height)
-- Hit detection (checking if click coordinates fall within an element's rectangle)
-- Scroll boundary calculation (contentWidth/Height determines max scroll range)
+**Design Notes**:
+
+- **`#clampScroll()` timing**: Must be called immediately after contentWidth/Height update. Scenario: user has scrolled to the bottom, then container shrinks causing contentHeight to decrease — without clamping, scrollY would exceed the maximum, causing blank space in the next render frame.
+- **`LayoutUpdated` is always sent**: Even if layout result is identical to the previous one, the main thread may depend on this message for UI synchronization (e.g., scrollbar updates). The cost of sending an unchanged message is far lower than maintaining comparison logic.
+- **Downstream consumers of layout results**:
+  - Viewport culling `#getVisibleItems()`: uses x/y to determine if within visible area
+  - Element drawing `#renderGridItems()`: uses x/y/width/height for `drawImage` calls
+  - Hit detection `#handleClick()`: checks if click coordinates fall within an item's rectangle
+  - Scroll bounds `#clampScroll()`: contentWidth/Height determines maximum scroll range
+
+### 5.2 Layout and Loop Mode Interaction
+
+Note that when seamless loop mode is active (`scroll.loop = true` and `hasMore = false`), `#renderLoopedItems()` does not use the x/y coordinates from layout results. Instead, it recalculates drawing positions using modulo arithmetic. However, it still relies on the layout result's `items` array for image references and status.
+
+This also explains why loop mode only supports Grid layout — Masonry layout's variable heights make seamless modulo-based tiling mathematically infeasible (columns with different heights cannot be simply aligned via blockH modulo).
 
 ---
 

@@ -68,32 +68,56 @@ this.#layoutStrategy = mode === 'masonry' ? new MasonryLayout() : new GridLayout
 
 ### 2.2 核心计算
 
+以下是 `GridLayout.calculate()` 的完整实现：
+
 ```typescript
+// src/core/layout/grid-layout.ts
 calculate(input: LayoutInput): LayoutResult {
   const { items, containerWidth, style } = input
   const { width: itemWidth, height: itemHeight, gap = 0 } = style
 
-  // 块尺寸 = 元素 + 间距
+  // 块尺寸 = 元素宽/高 + 间距，作为网格的基本单元
   const blockWidth = itemWidth + gap
   const blockHeight = itemHeight + gap
-
-  // 列数 = 容器宽度 / 块宽度（向上取整）
+  // 列数 = 容器宽度 / 块宽度（向上取整，确保尽量多列）
   const columns = Math.max(1, Math.ceil(containerWidth / blockWidth))
 
-  // 每个元素的位置
+  const positioned: GridItem[] = []
+
   for (let i = 0; i < items.length; i++) {
-    const column = i % columns        // 列号
-    const row = Math.floor(i / columns) // 行号
+    const column = i % columns                 // 列号：取模实现行主序排列
+    const row = Math.floor(i / columns)        // 行号：整除得到所在行
     const x = column * blockWidth
     const y = row * blockHeight
+    const source = items[i]
+
+    positioned.push({
+      id: source?.id ?? nanoid(),              // 保留已有 ID，避免重布局时丢失引用
+      image: source?.image ?? null,            // 保留已加载的 bitmap 引用
+      status: source?.status ?? 'loading',     // 保留加载状态，防止状态被重置
+      x,
+      y,
+      width: itemWidth,                        // Grid 模式下所有元素等宽等高
+      height: itemHeight,
+      itemIndex: source?.itemIndex ?? i,       // 保持数据源索引，用于点击回调
+    })
   }
 
-  // 内容尺寸
   const rows = Math.ceil(items.length / columns)
-  contentWidth = columns * blockWidth - gap    // 减去最后一列多余的 gap
-  contentHeight = rows * blockHeight - gap     // 减去最后一行多余的 gap
+  return {
+    items: positioned,
+    contentWidth: columns * blockWidth - gap,  // 总宽减去右侧多余 gap
+    contentHeight: rows * blockHeight - gap,   // 总高减去底部多余 gap
+    columns,
+  }
 }
 ```
+
+**设计要点**：
+
+- **ID 保持** (`source?.id ?? nanoid()`)：重布局（如 Resize、图片加载完成）时复用已有 ID，确保占位符的 Map 缓存能正确命中，避免每次布局都创建新的占位符动画状态。
+- **状态保持** (`source?.status ?? 'loading'`)：布局计算是无副作用的纯位置运算，不应改变项目的加载状态。
+- **`contentWidth/Height` 减去 gap**：最后一个元素的右侧/底部不需要 gap，`columns * blockWidth - gap` 去掉了末尾的冗余间距。
 
 ### 2.3 算法可视化
 
@@ -130,58 +154,98 @@ columns = Math.ceil(650 / 210) = 4
 
 ### 3.2 核心计算
 
+以下是 `MasonryLayout.calculate()` 的完整实现：
+
 ```typescript
+// src/core/layout/masonry-layout.ts
 calculate(input: LayoutInput): LayoutResult {
   const { items, containerWidth, style } = input
   const { width: itemWidth, gap = 0 } = style
 
   const blockWidth = itemWidth + gap
-  // 列数使用 Math.floor（瀑布流不允许超出容器）
+  // 瀑布流使用 Math.floor：确保所有列都完全在容器内，不产生水平溢出
   const columns = Math.max(1, Math.floor(containerWidth / blockWidth))
-
-  // 列高度数组（记录每列当前高度）
+  // 列高度数组：追踪每列的累计高度，用于决定下一个元素放入哪列
   const columnHeights = Array.from<number>({ length: columns }).fill(0)
 
-  for (const item of items) {
-    // 找到最短列
+  // 使用 map 而非 for 循环：每个元素的定位依赖当前列高度状态，
+  // map 的语义更清晰地表达"输入 → 输出"的映射关系
+  const positioned: GridItem[] = items.map((item, index) => {
+    // 贪心策略：每次放入最短列，使各列高度尽量均匀
     const shortestCol = columnHeights.indexOf(Math.min(...columnHeights))
-
-    // 元素位置
     const x = shortestCol * blockWidth
     const y = columnHeights[shortestCol]
 
-    // 计算元素高度
+    // 根据图片宽高比计算实际渲染高度
     const itemHeight = this.#resolveItemHeight(item, itemWidth, style.height)
-
-    // 更新列高度
+    // 累加列高度（元素高度 + gap）
     columnHeights[shortestCol] += itemHeight + gap
-  }
 
-  contentHeight = Math.max(...columnHeights) - gap
-  contentWidth = columns * blockWidth - gap
+    return {
+      id: item.id ?? nanoid(),
+      image: item.image,
+      status: item.status,
+      x,
+      y,
+      width: itemWidth,          // 宽度统一，高度各异
+      height: itemHeight,
+      itemIndex: item.itemIndex ?? index,
+    }
+  })
+
+  // Math.max(0, ...) 防御性编程：当 items 为空时 columnHeights 全为 0，
+  // Math.max(...columnHeights) - gap 会得到负数
+  const contentHeight = Math.max(0, Math.max(...columnHeights) - gap)
+  const contentWidth = Math.max(0, columns * blockWidth - gap)
+
+  return {
+    items: positioned,
+    contentWidth,
+    contentHeight,
+    columns,
+  }
 }
 ```
 
+**设计要点**：
+
+- **贪心最短列策略** (`columnHeights.indexOf(Math.min(...columnHeights))`)：时间复杂度 O(k)（k=列数），对于典型的 3-6 列场景性能足够。如果列数极大可以用最小堆优化，但在实际使用中列数由容器宽度/元素宽度决定，通常不超过 10。
+- **`Math.max(0, ...)` 安全包装**：避免空数组场景下 `Math.max(...[]) = -Infinity`，以及减去 gap 后可能得到负值的问题。
+- **与 GridLayout 的关键差异**：Grid 使用简单的 `i % columns` 行主序，Masonry 使用最短列贪心，因此 Masonry 的元素排列顺序不一定是从左到右的。
+
 ### 3.3 高度解析优先级
 
+`#resolveItemHeight()` 实现了三级 fallback 策略，确保无论数据完整性如何都能给出合理的高度值：
+
 ```typescript
+// src/core/layout/masonry-layout.ts
 #resolveItemHeight(item: GridItem, targetWidth: number, fallbackHeight: number): number {
-  // 1. 优先：item 自身携带的宽高（来自 ItemDescriptor）
+  // 优先级 1：使用 ItemDescriptor 中预声明的宽高（数据源提供的元数据）
+  // 条件：宽和高都必须 > 0，防止除零错误
   if (item.width && item.height && item.width > 0 && item.height > 0) {
     return Math.round(targetWidth * (item.height / item.width))
   }
 
-  // 2. 次优：已加载的 ImageBitmap 尺寸
+  // 优先级 2：使用已加载的 ImageBitmap 的实际像素尺寸
+  // 这在图片加载完成但未提供元数据的场景下生效
   if (item.image && item.image.width > 0 && item.image.height > 0) {
     return Math.round(targetWidth * (item.image.height / item.image.width))
   }
 
-  // 3. 回退：配置的默认高度
+  // 优先级 3：使用配置中的默认高度（style.height）
+  // 这是图片尚未加载、也无预设尺寸时的兜底值
   return fallbackHeight
 }
 ```
 
-**宽高比计算**：`targetWidth * (originalHeight / originalWidth)`，保持原始宽高比缩放到目标宽度。
+**设计要点**：
+
+- **`Math.round()` 取整**：避免亚像素布局导致的累积误差。如果不取整，多行元素的列高度会出现浮点数累积偏移，导致视觉错位。
+- **为什么同时检查 `width > 0` 和 `height > 0`**：防止 `0/width` 或 `height/0` 产生 NaN 或 Infinity，这些值传入后续布局计算会导致整个布局崩溃。
+- **三级 fallback 的意义**：
+  - 第 1 级：最快（无需等待图片加载），用于"已知尺寸的图片列表"场景
+  - 第 2 级：图片加载完成后触发重布局时生效
+  - 第 3 级：兜底值保证初始布局不会出错（元素会先以默认高度显示，加载完后重新计算）
 
 ### 3.4 算法可视化
 
@@ -235,24 +299,61 @@ columns = Math.floor(650 / 210) = 3
 
 ## 5. 布局结果的使用
 
-`performLayout()` 返回后：
+### 5.1 `#performLayout()` 完整实现
+
+布局计算在 Worker 线程中由 `#performLayout()` 触发，它是布局策略与渲染引擎之间的桥梁：
 
 ```typescript
+// src/core/worker/offscreen-canvas.ts
 #performLayout() {
+  // 防御：配置未就绪时跳过（Setup 消息可能尚未到达）
+  if (!this.#config?.core.style) {
+    return
+  }
+
+  // 组装布局输入
+  const input = {
+    items: this.#allItems,             // 所有数据项（含已加载和加载中的）
+    containerWidth: this.#clientWidth,  // 当前容器的 CSS 宽度
+    containerHeight: this.#clientHeight,
+    style: this.#config.core.style,    // 网格项样式配置
+  }
+
+  // 调用策略模式：根据初始化时选择的策略执行布局
   const result = this.#layoutStrategy.calculate(input)
-  this.#gridItems = result.items          // 更新定位数组
-  this.#contentWidth = result.contentWidth // 更新内容尺寸
+
+  // 更新渲染引擎状态
+  this.#gridItems = result.items            // 替换定位后的项目数组
+  this.#contentWidth = result.contentWidth  // 更新内容总尺寸
   this.#contentHeight = result.contentHeight
-  this.#clampScroll()                     // 重新约束滚动范围
-  this.#sendMessage(MessageType.LayoutUpdated, { ... }) // 通知主线程
+
+  // 重新约束滚动位置：布局变化后内容可能缩小，
+  // 当前滚动位置可能超出新的最大范围
+  this.#clampScroll()
+
+  // 通知主线程布局已更新（用于 onLayoutUpdate 回调）
+  this.#sendMessage(MessageType.LayoutUpdated, {
+    contentWidth: result.contentWidth,
+    contentHeight: result.contentHeight,
+  })
 }
 ```
 
-布局结果直接用于：
-- 视口裁剪（通过 x/y 判断是否在视口内）
-- 元素绘制（drawImage 使用 x/y/width/height）
-- 命中检测（检查点击坐标是否在某元素矩形内）
-- 滚动边界计算（contentWidth/Height 决定最大滚动范围）
+**设计要点**：
+
+- **`#clampScroll()` 调用时机**：必须在 contentWidth/Height 更新后立即调用。场景：用户已滚动到底部，此时容器缩小导致 contentHeight 减小，如果不 clamp，scrollY 会超出最大值，下一帧渲染会出现空白。
+- **`LayoutUpdated` 始终发送**：即使布局结果与上次相同，主线程可能依赖此消息做 UI 同步（如滚动条更新）。发送空消息的成本远低于维护"是否变化"的对比逻辑。
+- **布局结果的下游消费者**：
+  - 视口裁剪 `#getVisibleItems()`：通过 x/y 判断是否在可视区域内
+  - 元素绘制 `#renderGridItems()`：使用 x/y/width/height 调用 `drawImage`
+  - 命中检测 `#handleClick()`：检查点击坐标是否落在某元素矩形内
+  - 滚动边界 `#clampScroll()`：contentWidth/Height 决定最大滚动范围
+
+### 5.2 布局与循环模式的交互
+
+需要注意的是，当启用无缝循环模式（`scroll.loop = true` 且 `hasMore = false`）时，`#renderLoopedItems()` 不使用布局结果中的 x/y 坐标，而是基于 modulo 运算重新计算绘制位置。但它仍然依赖布局结果中的 `items` 数组来获取图片引用和状态。
+
+这也解释了为什么循环模式仅支持 Grid 布局——Masonry 布局的不等高特性使得基于 modulo 的无缝拼接在数学上不可行（高度不同的列无法简单通过 blockH 取模对齐）。
 
 ---
 

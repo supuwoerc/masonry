@@ -39,6 +39,46 @@ interface Message<T = MessagePayload> {
 | `payload` | Carries specific data, type determined by `type` |
 | `timestamp` | Records send time, useful for performance analysis |
 
+### 1.3 Message Sending Implementation
+
+Both main thread and Worker have their own `#sendMessage` method — same core logic but different calling interfaces:
+
+```typescript
+// ─── Main thread side (src/core/masonry.ts) ───
+#sendMessage(type: MessageType, payload: MessagePayload, transfer?: Transferable[]) {
+  const message: Message<MessagePayload> = {
+    id: nanoid(),           // Independent ID for each message
+    type,
+    payload,
+    timestamp: Date.now(),  // Record send time
+  }
+  // postMessage's second parameter is the Transferable list
+  // Defaults to empty array when no transfer needed (regular structured clone)
+  this.#worker?.postMessage(message, transfer ?? [])
+}
+
+// ─── Worker side (src/core/worker/offscreen-canvas.ts) ───
+#sendMessage(type: MessageType, payload: RequestPayload | ResponsePayload, from?: string): void {
+  const message: Message<RequestPayload | ResponsePayload> = {
+    id: nanoid(),
+    from,                   // Marks which request this message responds to
+    type,
+    payload,
+    timestamp: Date.now(),
+  }
+  // Worker uses globalThis.postMessage to send to main thread
+  // Note: Worker side has no transfer parameter because Worker→Main direction
+  // currently has no objects needing ownership transfer (ClickResult/LayoutUpdated are pure data)
+  globalThis.postMessage(message)
+}
+```
+
+**Design Notes**:
+
+- **Main thread has `transfer` parameter**: Because Main→Worker direction needs to transfer OffscreenCanvas and ImageBitmap (zero-copy ownership transfer).
+- **Worker side has `from` parameter**: Used for error tracing. When Worker encounters an error processing a request, the `from` field records which request caused it, helping the main thread pinpoint issues.
+- **`nanoid()` for ID generation**: Lightweight unique ID generator (21 chars, URL-safe) with better browser compatibility than `crypto.randomUUID()`.
+
 ---
 
 ## 2. Message Type Enum (15 types)
@@ -83,6 +123,68 @@ Worker → Main (7 types):
 | Click | ClickResult | Main→Worker→Main |
 | RenderLoading | RenderLoadingResponse | Worker→Main→Worker |
 | LoadMore | LoadMoreResponse | Worker→Main→Worker |
+
+### 2.3 Worker-Side Message Dispatch Implementation
+
+When the Worker receives a message, it dispatches it to the appropriate handler via `#handleMessage`'s switch-case:
+
+```typescript
+// src/core/worker/offscreen-canvas.ts
+#setupMessageHandler(): void {
+  globalThis.onmessage = (event: MessageEvent<Message>) => {
+    try {
+      this.#handleMessage(event.data)
+    } catch (error) {
+      // Top-level error boundary: any uncaught exception won't crash the Worker
+      // Instead it notifies the main thread via an Error message
+      this.#sendError(error)
+    }
+  }
+}
+
+#handleMessage(message: Message) {
+  const { type, payload } = message
+  switch (type) {
+    case MessageType.Setup:
+      this.#handleSetup(payload as SetupPayload)
+      break
+    case MessageType.Render:
+      // Render triggers three actions: start animation loop + first frame render + check if load more needed
+      this.#startAnimationLoop()
+      this.#handleRerender()
+      this.#checkLoadMore()
+      break
+    case MessageType.Resize:
+      this.#handleResize(payload as ResizePayload)
+      break
+    case MessageType.Scroll:
+      this.#handleScroll(payload as ScrollPayload)
+      break
+    case MessageType.RenderLoadingResponse:
+      this.#handleRenderLoading(payload as RenderLoadingResponsePayload)
+      break
+    case MessageType.LoadMoreResponse:
+      this.#handleLoadMoreResponse(payload as LoadMoreResponsePayload)
+      break
+    case MessageType.ImageLoaded:
+      this.#handleImageLoaded(payload as ImageLoadedPayload)
+      break
+    case MessageType.Click:
+      this.#handleClick(payload as ClickPayload)
+      break
+    default:
+      // Exhaustiveness guard: immediately errors on unknown message types
+      // Ensures protocol changes don't silently ignore new message types
+      throw new MasonryError(`unknown message type: ${type}`)
+  }
+}
+```
+
+**Design Notes**:
+
+- **Top-level try/catch error boundary**: Uncaught exceptions in a Worker thread don't have global error handling like the main thread. Without this boundary, an exception in one handler would break the entire Worker's `onmessage`, making all subsequent messages unprocessable.
+- **`default` throws error**: During protocol evolution, if the main thread sends a new message type the Worker doesn't support yet, throwing immediately makes version mismatch issues easier to discover than silently ignoring.
+- **`Render` triggers three actions**: This is the "start" signal after initialization completes — it atomically starts the render loop, draws the first frame, and performs the first loadMore check.
 
 ---
 
@@ -251,6 +353,8 @@ this.#sendMessage(MessageType.RenderLoadingResponse, { bitmap, id }, [bitmap])
 
 ## 6. Worker Configuration Stripping
 
+### 6.1 Configuration Stripping Type Definition
+
 Worker cannot and does not need certain main-thread-only objects:
 
 ```typescript
@@ -268,17 +372,74 @@ interface WorkerConfiguration extends Omit<
 }
 ```
 
-**Excluded fields**:
-- `canvas`: DOM element, cannot cross threads
-- `placeholderRenderer`: Contains DOM operations (createElement)
-- `events.onReady/onError`: Main-thread callback functions
-- `loader.loadMore`: Async function, not serializable
-- `interaction.onClick`: Needs access to original DOM event
+### 6.2 Complete Setup Payload Assembly Implementation
 
-**Retained fields**:
-- `backgroundColor`, `style`, `layout` — pure data configuration
-- `scroll` config — pure data (friction, buffer, disabled, etc.)
-- `loader.pageSize` — numeric value
+Here is the complete code for how the main thread builds the SetupPayload, showing configuration stripping and data normalization logic:
+
+```typescript
+// src/core/masonry.ts - payload assembly in #initWorker()
+const payload: SetupPayload = {
+  offscreenCanvas,
+  clientWidth: canvas.clientWidth,
+  clientHeight: canvas.clientHeight,
+  config: {
+    core: {
+      // Only pass pure data fields; exclude canvas (DOM) and items (may contain URL strings)
+      backgroundColor: this.#config.core.backgroundColor,
+      style: this.#config.core.style,
+      layout: this.#config.core.layout,
+      limit: this.#config.core.limit,
+      timeout: this.#config.core.timeout,
+    },
+  },
+  dpr: window.devicePixelRatio || 1,
+}
+
+// ─── Items normalization: different handling paths for three input formats ───
+const items = this.#config.core.items
+if (items?.length) {
+  if (items[0] instanceof ImageBitmap) {
+    // Path 1: Pre-loaded ImageBitmap array
+    // Pass directly to Worker — Worker can render immediately
+    payload.config.core.items = items as ImageBitmap[]
+  } else {
+    // Path 2: URL strings or ItemDescriptor objects
+    // URLs cannot be sent to Worker (fetch needs main thread for cookies/auth)
+    // So only send count and size info; Worker uses placeholders first
+    const descriptors = this.#normalizeItems(items as string[] | ItemDescriptor[])
+    payload.config.core.itemCount = descriptors.length       // Worker creates placeholder items
+    payload.config.core.itemSizes = descriptors.map((d) => ({
+      width: d.width,
+      height: d.height,
+    }))
+    // URLs stay on main thread, loaded later by ImageLoader
+    this.#pendingUrls = descriptors
+  }
+}
+
+// ─── Interaction config stripping: exclude non-serializable onClick function ───
+if (this.#config.interaction) {
+  payload.config.interaction = {
+    scroll: this.#config.interaction?.scroll,  // scroll is a pure data object
+  }
+}
+
+// ─── Loader config stripping: exclude non-serializable loadMore function ───
+if (this.#config.loader) {
+  payload.config.loader = {
+    pageSize: this.#config.loader.pageSize,    // Only pass the numeric value
+  }
+}
+
+// Send message with OffscreenCanvas as Transferable for zero-copy transfer
+this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas])
+```
+
+**Design Notes**:
+
+- **Why URLs aren't sent to the Worker**: Image loading (fetch) typically requires cookies, auth headers, CORS configuration — capabilities more easily managed on the main thread. The Worker only handles rendering pre-decoded ImageBitmaps.
+- **`itemCount + itemSizes` design**: Worker needs to know "how many items exist" to pre-create placeholder GridItems and perform layout calculation. Size information (when available) lets masonry layout produce accurate heights before images load.
+- **`#pendingUrls` purpose**: Stores the list of URLs to load, which `#loadImages()` uses to start async loading after receiving `SetupResponse`.
 
 ---
 

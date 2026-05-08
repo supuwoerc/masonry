@@ -40,6 +40,61 @@ Implemented via `postMessage` + `Transferable` objects:
 - **ImageBitmap**: Zero-copy transfer each time an image finishes loading
 - **Regular messages**: JSON-serialized `Message<T>` structure
 
+`#initWorker()` demonstrates the core logic of OffscreenCanvas transfer and items normalization:
+
+```typescript
+// src/core/masonry.ts
+async #initWorker() {
+  try {
+    this.#worker = new Worker(new URL('./worker/offscreen-canvas.ts', import.meta.url), {
+      type: 'module',
+    })
+    const canvas = this.#config.core.canvas
+    // Critical: after transferControlToOffscreen, all rendering ops on this canvas from main thread become invalid
+    const offscreenCanvas = canvas.transferControlToOffscreen()
+
+    // ─── Build SetupPayload: only pass serializable pure data ───
+    const payload: SetupPayload = {
+      offscreenCanvas,
+      clientWidth: canvas.clientWidth,
+      clientHeight: canvas.clientHeight,
+      config: { core: { backgroundColor, style, layout, limit, timeout } },
+      dpr: window.devicePixelRatio || 1,
+    }
+
+    // ─── Items normalization: different processing paths for three input formats ───
+    const items = this.#config.core.items
+    if (items?.length) {
+      if (items[0] instanceof ImageBitmap) {
+        // Path 1: Pre-loaded ImageBitmap → pass directly to Worker
+        payload.config.core.items = items as ImageBitmap[]
+      } else {
+        // Path 2: URL strings or ItemDescriptor → only pass count and dimensions
+        const descriptors = this.#normalizeItems(items as string[] | ItemDescriptor[])
+        payload.config.core.itemCount = descriptors.length
+        payload.config.core.itemSizes = descriptors.map((d) => ({ width: d.width, height: d.height }))
+        // URLs stay on main thread, loaded later by ImageLoader
+        this.#pendingUrls = descriptors
+      }
+    }
+
+    // OffscreenCanvas transferred as Transferable (zero-copy; main thread reference invalidated)
+    this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas])
+  } catch (error) {
+    // Graceful degradation when Worker creation fails
+    this.#useWorker = false
+    this.#worker = null
+    this.onError(error)
+  }
+}
+```
+
+**Design Notes**:
+
+- **Items dual-path**: `ImageBitmap` can be directly transferred to Worker via `Transferable` (zero-copy), while URL strings cannot be serialized into render data Worker needs — they must stay on the main thread for async loading and per-image delivery.
+- **Config trimming**: `onClick`, `loadMore`, `onReady` and other function references are non-serializable; only pure data config is sent to Worker.
+- **try/catch degradation**: Worker initialization may fail due to CSP policy, unsupported environments, etc. On failure, marks `#useWorker = false` and notifies user via `onError`.
+
 ### 1.3 Why OffscreenCanvas?
 
 | Approach | Pros | Cons |
@@ -116,21 +171,31 @@ The project uses multiple observer/event mechanisms:
 Async tasks (loadMore, renderLoading) may arrive concurrently; queuing ensures ordered execution:
 
 ```typescript
+// src/core/masonry.ts
 #queue = new Queue<(() => void) | (() => Promise<void>)>()
 
 async #runTask() {
   if (!this.#isRunning) {
-    this.#isRunning = true
-    while (this.#queue.size > 0) {
-      const task = this.#queue.dequeue()
-      await task?.()
+    try {
+      this.#isRunning = true
+      while (this.#queue.size > 0) {
+        const task = this.#queue.dequeue()
+        await task?.()
+      }
+    } finally {
+      // try/finally ensures exception safety: even if a task throws,
+      // #isRunning is reset to false, preventing permanent queue deadlock
+      this.#isRunning = false
     }
-    this.#isRunning = false
   }
 }
 ```
 
-**Design intent**: Prevents concurrent loadMore and renderLoading callbacks from interleaving and causing state inconsistency.
+**Design Notes**:
+
+- **`try/finally` exception safety**: If `await task?.()` throws (e.g., loadMore network timeout), without finally `#isRunning` would remain `true` forever, and all subsequently enqueued tasks would never execute — the queue becomes permanently "stuck". `finally` ensures the lock is always released regardless of success or failure.
+- **Re-entry prevention**: `if (!this.#isRunning)` ensures only one consumption loop runs at any time. Multiple calls to `#runTask()` won't start multiple concurrent consumers — newly enqueued tasks are automatically consumed by the currently running while loop.
+- **Ordered execution guarantee**: `while (this.#queue.size > 0)` dequeues one at a time, combined with `await` ensures each async task completes before the next one starts.
 
 ---
 
@@ -158,21 +223,56 @@ Configured in `vite.config.ts` as `worker.format: 'iife'`:
 
 ### 3.3 Why requestAnimationFrame for the Render Loop?
 
+#### Full Implementation (`#startAnimationLoop`)
+
 ```typescript
-// src/core/worker/offscreen-canvas.ts:507
-const renderFrame = () => {
-  if (this.#isInertiaActive) { ... }
-  if (hasWork) {
-    requestAnimationFrame(renderFrame)
-  } else {
-    this.#animationRunning = false
+// src/core/worker/offscreen-canvas.ts
+#animationRunning = false
+
+#startAnimationLoop() {
+  if (this.#animationRunning) {
+    return  // Prevent duplicate start: only one rAF loop runs at a time
   }
+  this.#animationRunning = true
+  const renderFrame = () => {
+    // Step 1: Process inertia scrolling (decay velocity each frame + re-render)
+    if (this.#isInertiaActive) {
+      this.#tickInertia()
+      this.#handleRerender()
+    }
+    // Step 2: Check if there are still items in loading state
+    const loadingItems = this.#gridItems.filter((item) => item.status !== 'loaded')
+    const ids = loadingItems.map((item) => item.id)
+    if (ids.length > 0) {
+      // idsChanged optimization: only send message when loading items set actually changes
+      // Avoids sending duplicate RenderLoading requests every frame
+      const idsChanged =
+        ids.length !== this.#lastLoadingIds.size ||
+        ids.some((id) => !this.#lastLoadingIds.has(id))
+      if (idsChanged) {
+        this.#lastLoadingIds = new Set(ids)
+        this.#sendMessage(MessageType.RenderLoading, ids)
+      }
+    } else {
+      this.#lastLoadingIds.clear()
+    }
+    // Step 3: Conditional exit — stop loop when no inertia and no loading items
+    const hasWork = this.#isInertiaActive || ids.length > 0
+    if (hasWork) {
+      requestAnimationFrame(renderFrame)
+    } else {
+      this.#animationRunning = false
+    }
+  }
+  renderFrame()  // Execute first frame immediately, don't wait for next vsync
 }
 ```
 
-- Synchronizes with display refresh rate (typically 60Hz)
-- Auto-pauses when page is not visible, saving resources
-- Conditional exit: stops loop when no inertia and no loading items, avoids idle spinning
+**Design Notes**:
+
+- **`idsChanged` optimization**: Placeholder rendering is a cross-thread async flow (Worker → Main → render → Main → Worker). Sending `RenderLoading` every frame would flood the message channel with redundant requests. `idsChanged` uses Set comparison to ensure messages are only sent when the loading set actually changes.
+- **Conditional exit avoids idle spinning**: When `hasWork` is false, sets `#animationRunning = false` and stops the loop. This means once all images are loaded and no inertia scrolling is active, the rAF loop completely stops — zero CPU consumption. Subsequent scrolls or new data arrival call `#startAnimationLoop()` again to restart.
+- **`renderFrame()` called immediately**: Not `requestAnimationFrame(renderFrame)` but direct `renderFrame()`. This ensures the first frame executes immediately without waiting for the next vsync signal (~16.7ms delay).
 
 ### 3.4 Background Layer Separation (Dual Canvas)
 
@@ -185,6 +285,47 @@ Worker uses two canvases: `#canvas` (main) + `#backgroundCanvas` (background cac
 ```
 
 **Reason**: Background (gradient) doesn't change per frame; separation avoids recalculating gradient stops every frame → just `drawImage` copy from cache.
+
+#### Render Pipeline Full Flow (`#handleRerender`)
+
+```typescript
+// src/core/worker/offscreen-canvas.ts
+#handleRerender() {
+  if (this.#context) {
+    try {
+      // Step 1: Clear main canvas current frame content
+      this.#clear()
+      // Step 2: Clear background canvas (prepare for redraw)
+      this.#clearBackground()
+      // Step 3: Draw gradient/solid background on background canvas
+      this.#handleRenderBackground()
+      // Step 4: Copy background canvas content to main canvas (drawImage bulk copy)
+      this.#copyBackground()
+      // Step 5: Save current transform matrix state
+      this.#context.save()
+      // Step 6: Apply scroll offset (translate instead of per-item coordinate calculation)
+      this.#context.translate(-this.#scrollX, -this.#scrollY)
+      // Step 7: Choose rendering strategy based on mode
+      if (this.#isLoopActive) {
+        this.#renderLoopedItems(this.#gridItems)    // Seamless loop: modulo mapping
+      } else {
+        this.#renderGridItems(this.#getVisibleItems(this.#gridItems))  // Normal mode: viewport culling
+      }
+      // Step 8: Restore transform matrix
+      this.#context.restore()
+    } catch (error) {
+      this.#sendError(error)
+    }
+  }
+}
+```
+
+**Design Notes**:
+
+- **`save()/restore()` pairing**: `translate` shifts the coordinate origin; `restore()` ensures the next frame's background drawing isn't affected by scroll offset. Forgetting `restore()` would cause the background to move with scrolling.
+- **`translate(-scrollX, -scrollY)` replaces per-item offset**: Canvas provides matrix transform APIs; a single `translate` is more efficient than N items each subtracting scrollX/scrollY — only one GPU state change.
+- **Background separation benefit**: `createLinearGradient` + `addColorStop` calls are expensive at large pixel counts. Separated to `#backgroundCanvas`, gradients are only regenerated on resize/DPR changes; each frame just needs one `drawImage` bulk copy (GPU-optimized path).
+- **try/catch error boundary**: `#sendError` forwards exceptions back to main thread's `onError` callback, preventing render errors from crashing the Worker.
 
 ---
 

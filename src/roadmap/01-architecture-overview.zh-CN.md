@@ -39,6 +39,61 @@
 - **ImageBitmap**：每次图片加载完成时零拷贝传输
 - **普通消息**：JSON 序列化的 `Message<T>` 结构
 
+`#initWorker()` 中展示了 OffscreenCanvas 转移和 items 标准化的核心逻辑：
+
+```typescript
+// src/core/masonry.ts
+async #initWorker() {
+  try {
+    this.#worker = new Worker(new URL('./worker/offscreen-canvas.ts', import.meta.url), {
+      type: 'module',
+    })
+    const canvas = this.#config.core.canvas
+    // 关键：transferControlToOffscreen 后主线程对该 canvas 的所有渲染操作都会失效
+    const offscreenCanvas = canvas.transferControlToOffscreen()
+
+    // ─── 构建 SetupPayload：只传递可序列化的纯数据 ───
+    const payload: SetupPayload = {
+      offscreenCanvas,
+      clientWidth: canvas.clientWidth,
+      clientHeight: canvas.clientHeight,
+      config: { core: { backgroundColor, style, layout, limit, timeout } },
+      dpr: window.devicePixelRatio || 1,
+    }
+
+    // ─── Items 标准化：三种输入格式的不同处理路径 ───
+    const items = this.#config.core.items
+    if (items?.length) {
+      if (items[0] instanceof ImageBitmap) {
+        // 路径 1：已预加载的 ImageBitmap → 直接传给 Worker
+        payload.config.core.items = items as ImageBitmap[]
+      } else {
+        // 路径 2：URL 字符串或 ItemDescriptor → 只传数量和尺寸
+        const descriptors = this.#normalizeItems(items as string[] | ItemDescriptor[])
+        payload.config.core.itemCount = descriptors.length
+        payload.config.core.itemSizes = descriptors.map((d) => ({ width: d.width, height: d.height }))
+        // URL 留在主线程，稍后由 ImageLoader 加载
+        this.#pendingUrls = descriptors
+      }
+    }
+
+    // OffscreenCanvas 作为 Transferable 零拷贝传输（传输后主线程引用失效）
+    this.#sendMessage(MessageType.Setup, payload, [offscreenCanvas])
+  } catch (error) {
+    // Worker 创建失败时降级处理
+    this.#useWorker = false
+    this.#worker = null
+    this.onError(error)
+  }
+}
+```
+
+**设计要点**：
+
+- **Items 双路径**：`ImageBitmap` 可以直接通过 `Transferable` 传输到 Worker（零拷贝），而 URL 字符串不可序列化为 Worker 所需的渲染数据——必须留在主线程异步加载后逐张发送。
+- **配置裁剪**：`onClick`、`loadMore`、`onReady` 等函数引用不可序列化，只传纯数据配置到 Worker。
+- **try/catch 降级**：Worker 初始化可能因 CSP 策略、不支持等原因失败。降级后标记 `#useWorker = false`，通过 `onError` 通知用户。
+
 ### 1.3 为什么选择 OffscreenCanvas
 
 | 方案 | 优势 | 劣势 |
@@ -115,21 +170,31 @@ this.#layoutStrategy = mode === 'masonry' ? new MasonryLayout() : new GridLayout
 异步任务（loadMore、renderLoading）可能并发到达，通过队列保证有序执行：
 
 ```typescript
+// src/core/masonry.ts
 #queue = new Queue<(() => void) | (() => Promise<void>)>()
 
 async #runTask() {
   if (!this.#isRunning) {
-    this.#isRunning = true
-    while (this.#queue.size > 0) {
-      const task = this.#queue.dequeue()
-      await task?.()
+    try {
+      this.#isRunning = true
+      while (this.#queue.size > 0) {
+        const task = this.#queue.dequeue()
+        await task?.()
+      }
+    } finally {
+      // try/finally 确保异常安全：即使某个任务抛出错误，
+      // #isRunning 也会被重置为 false，不会永久阻塞后续任务入队执行
+      this.#isRunning = false
     }
-    this.#isRunning = false
   }
 }
 ```
 
-**设计意图**：防止并发的 loadMore 和 renderLoading 回调交错执行导致状态不一致。
+**设计要点**：
+
+- **`try/finally` 异常安全**：如果 `await task?.()` 抛出异常（如 loadMore 网络超时），没有 finally 的话 `#isRunning` 会永远为 `true`，后续所有入队的任务都不会被执行——队列被永久"卡死"。`finally` 确保无论成功还是失败，锁都会被释放。
+- **防重入设计**：`if (!this.#isRunning)` 确保同一时刻只有一个消费循环在运行。多次调用 `#runTask()` 不会启动多个并发消费者——新入队的任务会被当前运行中的 while 循环自动消费。
+- **有序执行保证**：`while (this.#queue.size > 0)` 逐个出队执行，配合 `await` 确保每个异步任务完成后再执行下一个。
 
 ---
 
@@ -157,21 +222,56 @@ return await createImageBitmap(result) // blob → 预解码位图
 
 ### 3.3 为什么渲染循环使用 requestAnimationFrame
 
+#### 完整实现（`#startAnimationLoop`）
+
 ```typescript
-// src/core/worker/offscreen-canvas.ts:507
-const renderFrame = () => {
-  if (this.#isInertiaActive) { ... }
-  if (hasWork) {
-    requestAnimationFrame(renderFrame)
-  } else {
-    this.#animationRunning = false
+// src/core/worker/offscreen-canvas.ts
+#animationRunning = false
+
+#startAnimationLoop() {
+  if (this.#animationRunning) {
+    return  // 防止重复启动：同一时刻只有一个 rAF 循环在运行
   }
+  this.#animationRunning = true
+  const renderFrame = () => {
+    // 步骤 1：处理惯性滚动（每帧衰减速度 + 重新渲染）
+    if (this.#isInertiaActive) {
+      this.#tickInertia()
+      this.#handleRerender()
+    }
+    // 步骤 2：检查是否仍有 loading 状态的项目
+    const loadingItems = this.#gridItems.filter((item) => item.status !== 'loaded')
+    const ids = loadingItems.map((item) => item.id)
+    if (ids.length > 0) {
+      // idsChanged 优化：只有 loading 项目集合变化时才发送消息
+      // 避免每帧重复发送相同的 RenderLoading 请求
+      const idsChanged =
+        ids.length !== this.#lastLoadingIds.size ||
+        ids.some((id) => !this.#lastLoadingIds.has(id))
+      if (idsChanged) {
+        this.#lastLoadingIds = new Set(ids)
+        this.#sendMessage(MessageType.RenderLoading, ids)
+      }
+    } else {
+      this.#lastLoadingIds.clear()
+    }
+    // 步骤 3：条件退出——没有惯性也没有 loading 项时，停止循环
+    const hasWork = this.#isInertiaActive || ids.length > 0
+    if (hasWork) {
+      requestAnimationFrame(renderFrame)
+    } else {
+      this.#animationRunning = false
+    }
+  }
+  renderFrame()  // 立即执行第一帧，不等下一个 vsync
 }
 ```
 
-- 与显示器刷新率同步（通常 60Hz）
-- 页面不可见时自动暂停，节省资源
-- 条件退出：无惯性且无 loading 时停止循环，避免空转
+**设计要点**：
+
+- **`idsChanged` 优化**：占位符渲染是跨线程异步流程（Worker → Main → render → Main → Worker）。如果每帧都发送 `RenderLoading` 消息，会在消息通道中积压大量冗余请求。`idsChanged` 通过 Set 比较确保只在 loading 集合实际变化时才发消息。
+- **条件退出避免空转**：`hasWork` 为 false 时直接设置 `#animationRunning = false` 停止循环。这意味着一旦所有图片加载完且无惯性滚动，rAF 循环彻底停止——零 CPU 消耗。后续滚动或新数据到来时会重新调用 `#startAnimationLoop()` 启动。
+- **`renderFrame()` 立即调用**：不是 `requestAnimationFrame(renderFrame)` 而是直接 `renderFrame()`。这确保第一帧立即执行，不需要等待下一个 vsync 信号（约 16.7ms 延迟）。
 
 ### 3.4 背景层分离（双 Canvas）
 
@@ -184,6 +284,47 @@ Worker 使用两个 Canvas：`#canvas`（主画布）+ `#backgroundCanvas`（背
 ```
 
 **原因**：背景（渐变）每帧不变，分离后避免每帧重新计算渐变 stops → 直接 `drawImage` 拷贝缓存。
+
+#### 渲染管线完整流程（`#handleRerender`）
+
+```typescript
+// src/core/worker/offscreen-canvas.ts
+#handleRerender() {
+  if (this.#context) {
+    try {
+      // 步骤 1：清除主画布当前帧内容
+      this.#clear()
+      // 步骤 2：清除背景画布（为重绘做准备）
+      this.#clearBackground()
+      // 步骤 3：在背景画布上绘制渐变/纯色背景
+      this.#handleRenderBackground()
+      // 步骤 4：将背景画布内容拷贝到主画布（drawImage 整块复制）
+      this.#copyBackground()
+      // 步骤 5：保存当前变换矩阵状态
+      this.#context.save()
+      // 步骤 6：应用滚动偏移（translate 替代逐 item 坐标计算）
+      this.#context.translate(-this.#scrollX, -this.#scrollY)
+      // 步骤 7：根据模式选择渲染策略
+      if (this.#isLoopActive) {
+        this.#renderLoopedItems(this.#gridItems)    // 无缝循环：modulo 映射
+      } else {
+        this.#renderGridItems(this.#getVisibleItems(this.#gridItems))  // 普通模式：视口裁剪
+      }
+      // 步骤 8：恢复变换矩阵
+      this.#context.restore()
+    } catch (error) {
+      this.#sendError(error)
+    }
+  }
+}
+```
+
+**设计要点**：
+
+- **`save()/restore()` 配对**：`translate` 改变了坐标系原点，`restore()` 恢复确保下一帧的背景绘制不受滚动偏移影响。如果忘记 `restore()`，背景会随滚动移动。
+- **`translate(-scrollX, -scrollY)` 替代逐 item 偏移**：Canvas 提供矩阵变换 API，一次 `translate` 比 N 个 item 各减去 scrollX/scrollY 更高效——只设置一次 GPU 状态。
+- **背景分离的收益**：渐变背景的 `createLinearGradient` + `addColorStop` 调用在像素量大时开销可观。分离到 `#backgroundCanvas` 后，只有 resize/DPR 变化时才重新生成渐变；每帧只需 `drawImage` 一次整块复制（GPU 优化路径）。
+- **try/catch 错误边界**：`#sendError` 将异常传回主线程的 `onError` 回调，不让渲染异常导致 Worker 崩溃。
 
 ---
 
