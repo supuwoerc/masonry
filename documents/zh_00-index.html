@@ -1,0 +1,224 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>zh/00-index | @supuwoerc/masonry</title><meta name="description" content="Documentation for @supuwoerc/masonry"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="../index.html" class="title">@supuwoerc/masonry</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><ul class="tsd-breadcrumb" aria-label="Breadcrumb"><li><a href="" aria-current="page">zh/00-index</a></li></ul></div><div class="tsd-panel tsd-typography"><h1 id="supuwoercmasonry-项目架构总览与阅读指南" class="tsd-anchor-link">@supuwoerc/masonry — 项目架构总览与阅读指南<a href="#supuwoercmasonry-项目架构总览与阅读指南" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<h2 id="项目简介" class="tsd-anchor-link">项目简介<a href="#项目简介" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p><code>@supuwoerc/masonry</code> 是一个基于 <strong>Canvas 2D + Web Worker + OffscreenCanvas</strong> 的高性能图片网格/瀑布流布局库。它将所有渲染计算放在 Worker 线程中执行，主线程仅负责事件分发和资源加载，从而在处理大量图片时保持 60 FPS 的流畅体验。</p>
+<h3 id="核心特性" class="tsd-anchor-link">核心特性<a href="#核心特性" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<ul>
+<li><strong>离屏渲染</strong>：通过 <code>transferControlToOffscreen()</code> 将 Canvas 控制权转移到 Worker</li>
+<li><strong>双布局模式</strong>：等高网格（Grid）与瀑布流（Masonry）可切换</li>
+<li><strong>惯性滚动</strong>：带摩擦衰减的物理模型模拟自然滑动</li>
+<li><strong>视口裁剪</strong>：仅渲染可见区域内的元素，支持万级数据</li>
+<li><strong>无缝循环</strong>：数据加载完毕后可开启无限循环滚动</li>
+<li><strong>无限加载</strong>：滚动到底部自动触发分页加载</li>
+<li><strong>占位动画</strong>：图片加载中展示呼吸渐变或旋转加载动画</li>
+<li><strong>并发加载</strong>：带重试和超时的图片并发加载器</li>
+</ul>
+<hr>
+<h2 id="技术栈" class="tsd-anchor-link">技术栈<a href="#技术栈" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th>分类</th>
+<th>技术</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>渲染</td>
+<td>Canvas 2D API</td>
+<td>图片绘制、背景渲染</td>
+</tr>
+<tr>
+<td>多线程</td>
+<td>Web Worker + OffscreenCanvas</td>
+<td>离屏渲染，不阻塞主线程</td>
+</tr>
+<tr>
+<td>图片传输</td>
+<td>ImageBitmap + Transferable</td>
+<td>零拷贝跨线程图片传输</td>
+</tr>
+<tr>
+<td>并发控制</td>
+<td>p-limit</td>
+<td>图片加载并发限制</td>
+</tr>
+<tr>
+<td>重试机制</td>
+<td>@supuwoerc/toolkit (retry)</td>
+<td>指数退避重试</td>
+</tr>
+<tr>
+<td>唯一 ID</td>
+<td>nanoid</td>
+<td>消息和元素唯一标识</td>
+</tr>
+<tr>
+<td>工具函数</td>
+<td>lodash-es</td>
+<td>merge、get、类型判断</td>
+</tr>
+<tr>
+<td>构建工具</td>
+<td>Vite + TypeScript</td>
+<td>开发/构建/类型声明</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>Vitest + Testing Library</td>
+<td>单元测试</td>
+</tr>
+<tr>
+<td>代码质量</td>
+<td>ESLint + Prettier + Husky</td>
+<td>代码风格统一</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="目录结构" class="tsd-anchor-link">目录结构<a href="#目录结构" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-5">src</span><span class="hl-1">/</span><br/><span class="hl-1">├── </span><span class="hl-5">index</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                          # </span><span class="hl-5">入口文件</span><span class="hl-1">，</span><span class="hl-5">导出公开</span><span class="hl-1"> </span><span class="hl-7">API</span><br/><span class="hl-1">├── </span><span class="hl-5">core</span><span class="hl-1">/</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">builder</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                    # </span><span class="hl-5">MasonryBuilder</span><span class="hl-1"> </span><span class="hl-5">链式构建器</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">masonry</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                    # </span><span class="hl-5">Masonry</span><span class="hl-1"> </span><span class="hl-5">主类</span><span class="hl-1">（</span><span class="hl-5">主线程编排器</span><span class="hl-1">）</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">types</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                      # </span><span class="hl-5">TypeScript</span><span class="hl-1"> </span><span class="hl-5">类型定义</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">constant</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                   # </span><span class="hl-5">默认配置常量</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">error</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                      # </span><span class="hl-5">MasonryError</span><span class="hl-1"> </span><span class="hl-5">错误类</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">image</span><span class="hl-1">-</span><span class="hl-5">loader</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">               # </span><span class="hl-5">图片加载器</span><span class="hl-1">（</span><span class="hl-5">并发</span><span class="hl-1">/</span><span class="hl-5">重试</span><span class="hl-1">/</span><span class="hl-5">超时</span><span class="hl-1">）</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">rules</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                      # </span><span class="hl-5">配置验证规则</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">layout</span><span class="hl-1">/</span><br/><span class="hl-1">│   │   ├── </span><span class="hl-5">index</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                  # </span><span class="hl-5">布局模块导出</span><br/><span class="hl-1">│   │   ├── </span><span class="hl-5">grid</span><span class="hl-1">-</span><span class="hl-5">layout</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">            # </span><span class="hl-5">等高网格布局策略</span><br/><span class="hl-1">│   │   └── </span><span class="hl-5">masonry</span><span class="hl-1">-</span><span class="hl-5">layout</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">         # </span><span class="hl-5">瀑布流布局策略</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">placeholder</span><span class="hl-1">/</span><br/><span class="hl-1">│   │   ├── </span><span class="hl-5">breathing</span><span class="hl-1">-</span><span class="hl-5">placeholder</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">  # </span><span class="hl-5">呼吸渐变占位符渲染器</span><br/><span class="hl-1">│   │   └── </span><span class="hl-5">spin</span><span class="hl-1">-</span><span class="hl-5">placeholder</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">       # </span><span class="hl-5">旋转加载占位符渲染器</span><br/><span class="hl-1">│   └── </span><span class="hl-5">worker</span><span class="hl-1">/</span><br/><span class="hl-1">│       ├── </span><span class="hl-5">offscreen</span><span class="hl-1">-</span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">       # </span><span class="hl-5">Worker</span><span class="hl-1"> </span><span class="hl-5">渲染引擎</span><span class="hl-1">（</span><span class="hl-5">核心</span><span class="hl-1">）</span><br/><span class="hl-1">│       ├── </span><span class="hl-5">protocol</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">               # </span><span class="hl-5">通信协议定义</span><br/><span class="hl-1">│       └── </span><span class="hl-5">constant</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">               # </span><span class="hl-5">Worker</span><span class="hl-1"> </span><span class="hl-5">常量</span><br/><span class="hl-1">├── </span><span class="hl-5">helper</span><span class="hl-1">/</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">background</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                 # </span><span class="hl-5">背景样式创建</span><span class="hl-1">（</span><span class="hl-5">纯色</span><span class="hl-1">/</span><span class="hl-5">渐变</span><span class="hl-1">）</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">validator</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                  # </span><span class="hl-5">通用验证框架</span><br/><span class="hl-1">│   └── </span><span class="hl-5">stats</span><span class="hl-1">-</span><span class="hl-5">monitor</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">             # </span><span class="hl-5">性能监控</span><span class="hl-1">（</span><span class="hl-7">FPS</span><span class="hl-1">/</span><span class="hl-5">帧时间</span><span class="hl-1">/</span><span class="hl-5">内存</span><span class="hl-1">）</span><br/><span class="hl-1">├── </span><span class="hl-5">utils</span><span class="hl-1">/</span><br/><span class="hl-1">│   ├── </span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                     # </span><span class="hl-5">环境能力检测</span><br/><span class="hl-1">│   └── </span><span class="hl-5">is</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">                         # </span><span class="hl-5">增强类型检查</span><br/><span class="hl-1">└── </span><span class="hl-5">test</span><span class="hl-1">/</span><br/><span class="hl-1">    └── </span><span class="hl-5">core</span><span class="hl-1">/</span><span class="hl-5">masonry</span><span class="hl-1">.</span><span class="hl-5">test</span><span class="hl-1">.</span><span class="hl-5">ts</span><span class="hl-1">          # </span><span class="hl-5">单元测试</span>
+</code><button>Copy</button></pre>
+
+<hr>
+<h2 id="架构图" class="tsd-anchor-link">架构图<a href="#架构图" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-1">┌──────────────────────────────────────────────────────────────┐</span><br/><span class="hl-1">│                        </span><span class="hl-5">Main</span><span class="hl-1"> </span><span class="hl-5">Thread</span><span class="hl-1">                            │</span><br/><span class="hl-1">│                                                              │</span><br/><span class="hl-1">│  ┌─────────────┐    ┌─────────────┐    ┌────────────────┐   │</span><br/><span class="hl-1">│  │</span><span class="hl-5">MasonryBuilder</span><span class="hl-1">│───→│   </span><span class="hl-5">Masonry</span><span class="hl-1">   │───→│  </span><span class="hl-5">ImageLoader</span><span class="hl-1">   │   │</span><br/><span class="hl-1">│  └─────────────┘    └──────┬──────┘    └────────────────┘   │</span><br/><span class="hl-1">│                            │                                  │</span><br/><span class="hl-1">│              ┌─────────────┼─────────────┐                   │</span><br/><span class="hl-1">│              │             │             │                    │</span><br/><span class="hl-1">│      ┌───────▼──┐  ┌──────▼─────┐  ┌───▼──────────────┐    │</span><br/><span class="hl-1">│      │  </span><span class="hl-5">Resize</span><span class="hl-1">  │  │   </span><span class="hl-5">Scroll</span><span class="hl-1">   │  │  </span><span class="hl-5">Placeholder</span><span class="hl-1">     │    │</span><br/><span class="hl-1">│      │ </span><span class="hl-5">Observer</span><span class="hl-1"> │  │  </span><span class="hl-5">Listeners</span><span class="hl-1"> │  │  </span><span class="hl-5">Renderer</span><span class="hl-1">        │    │</span><br/><span class="hl-1">│      └──────────┘  └────────────┘  └──────────────────┘    │</span><br/><span class="hl-1">│                                                              │</span><br/><span class="hl-1">└──────────────────────────┬───────────────────────────────────┘</span><br/><span class="hl-1">                           │ </span><span class="hl-0">postMessage</span><span class="hl-1"> (</span><span class="hl-5">Transferable</span><span class="hl-1">)</span><br/><span class="hl-1">                           ▼</span><br/><span class="hl-1">┌──────────────────────────────────────────────────────────────┐</span><br/><span class="hl-1">│                       </span><span class="hl-5">Worker</span><span class="hl-1"> </span><span class="hl-5">Thread</span><span class="hl-1">                           │</span><br/><span class="hl-1">│                                                              │</span><br/><span class="hl-1">│  ┌──────────────────────────────────────────────────────┐   │</span><br/><span class="hl-1">│  │            </span><span class="hl-5">OffscreenCanvasWorker</span><span class="hl-1">                       │   │</span><br/><span class="hl-1">│  │                                                       │   │</span><br/><span class="hl-1">│  │  ┌────────────┐  ┌──────────┐  ┌─────────────────┐  │   │</span><br/><span class="hl-1">│  │  │  </span><span class="hl-5">Layout</span><span class="hl-1">    │  │ </span><span class="hl-5">Viewport</span><span class="hl-1"> │  │  </span><span class="hl-5">Inertia</span><span class="hl-1">        │  │   │</span><br/><span class="hl-1">│  │  │  </span><span class="hl-5">Strategy</span><span class="hl-1">  │  │ </span><span class="hl-5">Culling</span><span class="hl-1">  │  │  </span><span class="hl-5">Scrolling</span><span class="hl-1">      │  │   │</span><br/><span class="hl-1">│  │  └────────────┘  └──────────┘  └─────────────────┘  │   │</span><br/><span class="hl-1">│  │                                                       │   │</span><br/><span class="hl-1">│  │  ┌────────────┐  ┌──────────┐  ┌─────────────────┐  │   │</span><br/><span class="hl-1">│  │  │ </span><span class="hl-5">Background</span><span class="hl-1"> │  │  </span><span class="hl-5">Hit</span><span class="hl-1">     │  │  </span><span class="hl-5">Animation</span><span class="hl-1">      │  │   │</span><br/><span class="hl-1">│  │  │ </span><span class="hl-5">Rendering</span><span class="hl-1">  │  │ </span><span class="hl-5">Detection</span><span class="hl-1">│  │  </span><span class="hl-0">Loop</span><span class="hl-1"> (</span><span class="hl-5">rAF</span><span class="hl-1">)     │  │   │</span><br/><span class="hl-1">│  │  └────────────┘  └──────────┘  └─────────────────┘  │   │</span><br/><span class="hl-1">│  └──────────────────────────────────────────────────────┘   │</span><br/><span class="hl-1">└──────────────────────────────────────────────────────────────┘</span>
+</code><button>Copy</button></pre>
+
+<hr>
+<h2 id="核心数据流" class="tsd-anchor-link">核心数据流<a href="#核心数据流" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-9">1.</span><span class="hl-1"> </span><span class="hl-10">初始化流程</span><span class="hl-1">:</span><br/><span class="hl-1">   </span><span class="hl-5">Builder</span><span class="hl-1">.</span><span class="hl-0">build</span><span class="hl-1">() → </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Masonry</span><span class="hl-1">(</span><span class="hl-5">config</span><span class="hl-1">) → #</span><span class="hl-0">initWorker</span><span class="hl-1">()</span><br/><span class="hl-1">   → </span><span class="hl-0">transferControlToOffscreen</span><span class="hl-1">() → </span><span class="hl-0">postMessage</span><span class="hl-1">(</span><span class="hl-5">Setup</span><span class="hl-1">, [</span><span class="hl-5">OffscreenCanvas</span><span class="hl-1">])</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">handleSetup</span><span class="hl-1"> → </span><span class="hl-5">performLayout</span><span class="hl-1"> → </span><span class="hl-5">SetupResponse</span><br/><span class="hl-1">   → </span><span class="hl-10">Main</span><span class="hl-1">: </span><span class="hl-5">onReady</span><span class="hl-1"> + </span><span class="hl-5">Render</span><span class="hl-1"> + </span><span class="hl-5">loadImages</span><br/><br/><span class="hl-9">2.</span><span class="hl-1"> </span><span class="hl-10">滚动流程</span><span class="hl-1">:</span><br/><span class="hl-1">   </span><span class="hl-5">wheel</span><span class="hl-1">/</span><span class="hl-5">pointer</span><span class="hl-1"> </span><span class="hl-5">event</span><span class="hl-1"> → </span><span class="hl-10">Main</span><span class="hl-1">: </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">Scroll</span><span class="hl-1">, {</span><span class="hl-5">deltaX</span><span class="hl-1">, </span><span class="hl-5">deltaY</span><span class="hl-1">})</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">handleScroll</span><span class="hl-1"> → </span><span class="hl-5">update</span><span class="hl-1"> </span><span class="hl-5">scrollXY</span><span class="hl-1"> → </span><span class="hl-5">tickInertia</span><span class="hl-1"> → </span><span class="hl-5">handleRerender</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">checkLoadMore</span><span class="hl-1"> → (</span><span class="hl-5">if</span><span class="hl-1"> </span><span class="hl-5">threshold</span><span class="hl-1">) → </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">LoadMore</span><span class="hl-1">)</span><br/><br/><span class="hl-9">3.</span><span class="hl-1"> </span><span class="hl-10">图片加载流程</span><span class="hl-1">:</span><br/><span class="hl-1">   </span><span class="hl-10">Main</span><span class="hl-1">: </span><span class="hl-5">ImageLoader</span><span class="hl-1">.</span><span class="hl-5">loadBatch</span><span class="hl-1"> → </span><span class="hl-5">fetch</span><span class="hl-1"> → </span><span class="hl-5">createImageBitmap</span><br/><span class="hl-1">   → </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">ImageLoaded</span><span class="hl-1">, {</span><span class="hl-5">bitmap</span><span class="hl-1">}, [</span><span class="hl-5">bitmap</span><span class="hl-1">])</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">handleImageLoaded</span><span class="hl-1"> → </span><span class="hl-5">performLayout</span><span class="hl-1"> → </span><span class="hl-5">handleRerender</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">RemoveLoading</span><span class="hl-1">, </span><span class="hl-5">id</span><span class="hl-1">)</span><br/><span class="hl-1">   → </span><span class="hl-10">Main</span><span class="hl-1">: </span><span class="hl-5">placeholderRenderer</span><span class="hl-1">.</span><span class="hl-0">remove</span><span class="hl-1">(</span><span class="hl-5">id</span><span class="hl-1">)</span><br/><br/><span class="hl-9">4.</span><span class="hl-1"> </span><span class="hl-10">无限滚动流程</span><span class="hl-1">:</span><br/><span class="hl-1">   </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">checkLoadMore</span><span class="hl-1"> → </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">LoadMore</span><span class="hl-1">)</span><br/><span class="hl-1">   → </span><span class="hl-10">Main</span><span class="hl-1">: </span><span class="hl-5">loader</span><span class="hl-1">.</span><span class="hl-0">loadMore</span><span class="hl-1">(</span><span class="hl-5">page</span><span class="hl-1">, </span><span class="hl-5">pageSize</span><span class="hl-1">) → </span><span class="hl-5">加载图片</span><br/><span class="hl-1">   → </span><span class="hl-0">sendMessage</span><span class="hl-1">(</span><span class="hl-5">LoadMoreResponse</span><span class="hl-1">, {</span><span class="hl-5">data:</span><span class="hl-1"> </span><span class="hl-5">bitmaps</span><span class="hl-1">})</span><br/><span class="hl-1">   → </span><span class="hl-10">Worker</span><span class="hl-1">: </span><span class="hl-5">handleLoadMoreResponse</span><span class="hl-1"> → </span><span class="hl-5">performLayout</span><span class="hl-1"> → </span><span class="hl-5">handleRerender</span>
+</code><button>Copy</button></pre>
+
+<hr>
+<h2 id="文档列表与阅读建议" class="tsd-anchor-link">文档列表与阅读建议<a href="#文档列表与阅读建议" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>建议按以下顺序阅读，从宏观到微观逐步深入：</p>
+<table>
+<thead>
+<tr>
+<th>序号</th>
+<th>文档</th>
+<th>内容概述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01</td>
+<td><a href="zh_01-architecture-overview.html">整体架构与设计模式</a></td>
+<td>双线程模型、设计模式、关键技术决策</td>
+</tr>
+<tr>
+<td>02</td>
+<td><a href="zh_02-builder-and-configuration.html">Builder 构建器与配置验证</a></td>
+<td>链式 API、类型系统、验证框架</td>
+</tr>
+<tr>
+<td>03</td>
+<td><a href="zh_03-main-thread-orchestration.html">主线程编排与事件协调</a></td>
+<td>Masonry 类生命周期、消息路由、事件处理</td>
+</tr>
+<tr>
+<td>04</td>
+<td><a href="zh_04-worker-communication.html">Worker 通信协议</a></td>
+<td>消息结构、类型枚举、Transferable 传输</td>
+</tr>
+<tr>
+<td>05</td>
+<td><a href="zh_05-offscreen-rendering-engine.html">OffscreenCanvas 渲染引擎</a></td>
+<td>渲染循环、视口裁剪、惯性滚动、无缝循环</td>
+</tr>
+<tr>
+<td>06</td>
+<td><a href="zh_06-layout-strategies.html">布局策略</a></td>
+<td>Grid/Masonry 算法、Strategy 模式</td>
+</tr>
+<tr>
+<td>07</td>
+<td><a href="zh_07-image-loading-and-placeholders.html">图片加载与占位符动画</a></td>
+<td>并发加载、重试策略、动画原理</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="术语表" class="tsd-anchor-link">术语表<a href="#术语表" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OffscreenCanvas</td>
+<td>可脱离 DOM 使用的 Canvas，支持在 Worker 中绑定渲染</td>
+</tr>
+<tr>
+<td>ImageBitmap</td>
+<td>预解码的位图对象，可通过 Transferable 零拷贝传输到 Worker</td>
+</tr>
+<tr>
+<td>Transferable</td>
+<td>postMessage 的传输对象，传输后原引用失效（转移所有权）</td>
+</tr>
+<tr>
+<td>Viewport Culling</td>
+<td>视口裁剪，只渲染视口可见区域内的元素以提升性能</td>
+</tr>
+<tr>
+<td>Inertia Scrolling</td>
+<td>惯性滚动，释放触控后速度按摩擦系数逐帧衰减</td>
+</tr>
+<tr>
+<td>Strategy Pattern</td>
+<td>策略模式，通过统一接口切换不同的布局算法</td>
+</tr>
+<tr>
+<td>Builder Pattern</td>
+<td>构建者模式，通过链式调用逐步配置复杂对象</td>
+</tr>
+<tr>
+<td>DPR</td>
+<td>Device Pixel Ratio，设备像素比，用于高清屏适配</td>
+</tr>
+<tr>
+<td>rAF</td>
+<td>requestAnimationFrame，浏览器渲染帧回调</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="浏览器兼容性" class="tsd-anchor-link">浏览器兼容性<a href="#浏览器兼容性" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th>浏览器</th>
+<th>最低版本</th>
+<th>关键依赖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chrome</td>
+<td>69+</td>
+<td>OffscreenCanvas</td>
+</tr>
+<tr>
+<td>Firefox</td>
+<td>105+</td>
+<td>OffscreenCanvas</td>
+</tr>
+<tr>
+<td>Safari</td>
+<td>16.4+</td>
+<td>OffscreenCanvas</td>
+</tr>
+<tr>
+<td>Edge</td>
+<td>79+</td>
+<td>OffscreenCanvas</td>
+</tr>
+</tbody>
+</table>
+<p>核心要求：Canvas 2D API + Web Worker + OffscreenCanvas + ImageBitmap + ResizeObserver</p>
+</div></div><div class="col-sidebar"><div class="page-menu"><div class="tsd-navigation settings"><details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg><h3>Settings</h3></summary><div class="tsd-accordion-details"><div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span><ul id="tsd-filter-options"><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div><div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div><details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg><h3>On This Page</h3></summary><div class="tsd-accordion-details"><a href="#supuwoercmasonry-项目架构总览与阅读指南"><span>@supuwoerc/masonry — 项目架构总览与阅读指南</span></a><ul><li><a href="#项目简介"><span>项目简介</span></a></li><li><ul><li><a href="#核心特性"><span>核心特性</span></a></li></ul></li><li><a href="#技术栈"><span>技术栈</span></a></li><li><a href="#目录结构"><span>目录结构</span></a></li><li><a href="#架构图"><span>架构图</span></a></li><li><a href="#核心数据流"><span>核心数据流</span></a></li><li><a href="#文档列表与阅读建议"><span>文档列表与阅读建议</span></a></li><li><a href="#术语表"><span>术语表</span></a></li><li><a href="#浏览器兼容性"><span>浏览器兼容性</span></a></li></ul></div></details></div><div class="site-menu"><nav class="tsd-navigation"><a href="../modules.html">@supuwoerc/masonry</a><ul class="tsd-small-nested-navigation" id="tsd-nav-container"><li>Loading...</li></ul></nav></div></div></div><footer><p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer><div class="overlay"></div></body></html>

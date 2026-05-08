@@ -1,0 +1,255 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>zh/01-architecture-overview | @supuwoerc/masonry</title><meta name="description" content="Documentation for @supuwoerc/masonry"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="../index.html" class="title">@supuwoerc/masonry</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><ul class="tsd-breadcrumb" aria-label="Breadcrumb"><li><a href="" aria-current="page">zh/01-architecture-overview</a></li></ul></div><div class="tsd-panel tsd-typography"><h1 id="整体架构与设计模式" class="tsd-anchor-link">整体架构与设计模式<a href="#整体架构与设计模式" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<blockquote>
+<p>本文档从全局视角介绍 <code>@supuwoerc/masonry</code> 的架构设计、线程模型、设计模式和关键技术决策。</p>
+</blockquote>
+<h2 id="模块定位" class="tsd-anchor-link">模块定位<a href="#模块定位" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>这是项目的顶层架构文档，帮助你理解整个库为什么这样设计、各部分如何协作。</p>
+<hr>
+<h2 id="1-双线程模型" class="tsd-anchor-link">1. 双线程模型<a href="#1-双线程模型" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="11-为什么需要双线程" class="tsd-anchor-link">1.1 为什么需要双线程<a href="#11-为什么需要双线程" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>传统 DOM/Canvas 方案的瓶颈：</p>
+<ul>
+<li>布局计算（尤其瀑布流 O(n) 遍历）阻塞主线程</li>
+<li>Canvas 绑制大量图片时，<code>drawImage</code> 调用密集导致帧率下降</li>
+<li>滚动事件处理与渲染竞争同一线程</li>
+</ul>
+<p>本库的解决方案是将<strong>渲染密集型</strong>工作全部移至 Worker 线程：</p>
+<pre><code><span class="hl-1">┌─────────────────────────────┐    ┌─────────────────────────────┐</span><br/><span class="hl-1">│         </span><span class="hl-0">主线程</span><span class="hl-1"> (</span><span class="hl-5">Main</span><span class="hl-1">)        │    │       </span><span class="hl-5">Worker</span><span class="hl-1"> </span><span class="hl-5">线程</span><span class="hl-1">            │</span><br/><span class="hl-1">│                             │    │                             │</span><br/><span class="hl-1">│ • </span><span class="hl-0">事件监听</span><span class="hl-1"> (</span><span class="hl-5">scroll</span><span class="hl-1">/</span><span class="hl-5">click</span><span class="hl-1">)   │    │ • </span><span class="hl-5">布局计算</span><span class="hl-1">                   │</span><br/><span class="hl-1">│ • </span><span class="hl-5">图片资源加载</span><span class="hl-1">              │    │ • </span><span class="hl-5">Canvas</span><span class="hl-1"> </span><span class="hl-5">渲染</span><span class="hl-1">                │</span><br/><span class="hl-1">│ • </span><span class="hl-5">占位符动画生成</span><span class="hl-1">            │    │ • </span><span class="hl-5">惯性滚动物理模拟</span><span class="hl-1">           │</span><br/><span class="hl-1">│ • </span><span class="hl-5">ResizeObserver</span><span class="hl-1">            │    │ • </span><span class="hl-5">视口裁剪</span><span class="hl-1">                   │</span><br/><span class="hl-1">│ • </span><span class="hl-5">消息路由与分发</span><span class="hl-1">            │    │ • </span><span class="hl-0">命中检测</span><span class="hl-1"> (</span><span class="hl-5">click</span><span class="hl-1">)           │</span><br/><span class="hl-1">│ • </span><span class="hl-5">生命周期管理</span><span class="hl-1">              │    │ • </span><span class="hl-5">无缝循环计算</span><span class="hl-1">               │</span><br/><span class="hl-1">└─────────────────────────────┘    └─────────────────────────────┘</span>
+</code><button>Copy</button></pre>
+
+<h3 id="12-线程间通信" class="tsd-anchor-link">1.2 线程间通信<a href="#12-线程间通信" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>通过 <code>postMessage</code> + <code>Transferable</code> 对象实现：</p>
+<ul>
+<li><strong>OffscreenCanvas</strong>：初始化时一次性转移（不可逆）</li>
+<li><strong>ImageBitmap</strong>：每次图片加载完成时零拷贝传输</li>
+<li><strong>普通消息</strong>：JSON 序列化的 <code>Message&lt;T&gt;</code> 结构</li>
+</ul>
+<p><code>#initWorker()</code> 中展示了 OffscreenCanvas 转移和 items 标准化的核心逻辑：</p>
+<pre><code class="typescript"><span class="hl-3">// src/core/masonry.ts</span><br/><span class="hl-5">async</span><span class="hl-1"> #</span><span class="hl-0">initWorker</span><span class="hl-1">() {</span><br/><span class="hl-1">  </span><span class="hl-4">try</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#worker</span><span class="hl-1"> = </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Worker</span><span class="hl-1">(</span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">URL</span><span class="hl-1">(</span><span class="hl-2">&#39;./worker/offscreen-canvas.ts&#39;</span><span class="hl-1">, </span><span class="hl-4">import</span><span class="hl-1">.</span><span class="hl-5">meta</span><span class="hl-1">.</span><span class="hl-5">url</span><span class="hl-1">), {</span><br/><span class="hl-1">      </span><span class="hl-5">type:</span><span class="hl-1"> </span><span class="hl-2">&#39;module&#39;</span><span class="hl-1">,</span><br/><span class="hl-1">    })</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">canvas</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#config</span><span class="hl-1">.</span><span class="hl-5">core</span><span class="hl-1">.</span><span class="hl-5">canvas</span><br/><span class="hl-1">    </span><span class="hl-3">// 关键：transferControlToOffscreen 后主线程对该 canvas 的所有渲染操作都会失效</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">offscreenCanvas</span><span class="hl-1"> = </span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-0">transferControlToOffscreen</span><span class="hl-1">()</span><br/><br/><span class="hl-1">    </span><span class="hl-3">// ─── 构建 SetupPayload：只传递可序列化的纯数据 ───</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">payload</span><span class="hl-1">: </span><span class="hl-8">SetupPayload</span><span class="hl-1"> = {</span><br/><span class="hl-1">      </span><span class="hl-5">offscreenCanvas</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-5">clientWidth:</span><span class="hl-1"> </span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-5">clientWidth</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-5">clientHeight:</span><span class="hl-1"> </span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-5">clientHeight</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-5">config:</span><span class="hl-1"> { </span><span class="hl-5">core:</span><span class="hl-1"> { </span><span class="hl-5">backgroundColor</span><span class="hl-1">, </span><span class="hl-5">style</span><span class="hl-1">, </span><span class="hl-5">layout</span><span class="hl-1">, </span><span class="hl-5">limit</span><span class="hl-1">, </span><span class="hl-5">timeout</span><span class="hl-1"> } },</span><br/><span class="hl-1">      </span><span class="hl-5">dpr:</span><span class="hl-1"> </span><span class="hl-5">window</span><span class="hl-1">.</span><span class="hl-5">devicePixelRatio</span><span class="hl-1"> || </span><span class="hl-9">1</span><span class="hl-1">,</span><br/><span class="hl-1">    }</span><br/><br/><span class="hl-1">    </span><span class="hl-3">// ─── Items 标准化：三种输入格式的不同处理路径 ───</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">items</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#config</span><span class="hl-1">.</span><span class="hl-5">core</span><span class="hl-1">.</span><span class="hl-5">items</span><br/><span class="hl-1">    </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-5">items</span><span class="hl-1">?.</span><span class="hl-5">length</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-5">items</span><span class="hl-1">[</span><span class="hl-9">0</span><span class="hl-1">] </span><span class="hl-6">instanceof</span><span class="hl-1"> </span><span class="hl-8">ImageBitmap</span><span class="hl-1">) {</span><br/><span class="hl-1">        </span><span class="hl-3">// 路径 1：已预加载的 ImageBitmap → 直接传给 Worker</span><br/><span class="hl-1">        </span><span class="hl-5">payload</span><span class="hl-1">.</span><span class="hl-5">config</span><span class="hl-1">.</span><span class="hl-5">core</span><span class="hl-1">.</span><span class="hl-5">items</span><span class="hl-1"> = </span><span class="hl-5">items</span><span class="hl-1"> </span><span class="hl-4">as</span><span class="hl-1"> </span><span class="hl-8">ImageBitmap</span><span class="hl-1">[]</span><br/><span class="hl-1">      } </span><span class="hl-4">else</span><span class="hl-1"> {</span><br/><span class="hl-1">        </span><span class="hl-3">// 路径 2：URL 字符串或 ItemDescriptor → 只传数量和尺寸</span><br/><span class="hl-1">        </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">descriptors</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#normalizeItems</span><span class="hl-1">(</span><span class="hl-5">items</span><span class="hl-1"> </span><span class="hl-4">as</span><span class="hl-1"> </span><span class="hl-8">string</span><span class="hl-1">[] | </span><span class="hl-8">ItemDescriptor</span><span class="hl-1">[])</span><br/><span class="hl-1">        </span><span class="hl-5">payload</span><span class="hl-1">.</span><span class="hl-5">config</span><span class="hl-1">.</span><span class="hl-5">core</span><span class="hl-1">.</span><span class="hl-5">itemCount</span><span class="hl-1"> = </span><span class="hl-5">descriptors</span><span class="hl-1">.</span><span class="hl-5">length</span><br/><span class="hl-1">        </span><span class="hl-5">payload</span><span class="hl-1">.</span><span class="hl-5">config</span><span class="hl-1">.</span><span class="hl-5">core</span><span class="hl-1">.</span><span class="hl-5">itemSizes</span><span class="hl-1"> = </span><span class="hl-5">descriptors</span><span class="hl-1">.</span><span class="hl-0">map</span><span class="hl-1">((</span><span class="hl-5">d</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> ({ </span><span class="hl-5">width:</span><span class="hl-1"> </span><span class="hl-5">d</span><span class="hl-1">.</span><span class="hl-5">width</span><span class="hl-1">, </span><span class="hl-5">height:</span><span class="hl-1"> </span><span class="hl-5">d</span><span class="hl-1">.</span><span class="hl-5">height</span><span class="hl-1"> }))</span><br/><span class="hl-1">        </span><span class="hl-3">// URL 留在主线程，稍后由 ImageLoader 加载</span><br/><span class="hl-1">        </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#pendingUrls</span><span class="hl-1"> = </span><span class="hl-5">descriptors</span><br/><span class="hl-1">      }</span><br/><span class="hl-1">    }</span><br/><br/><span class="hl-1">    </span><span class="hl-3">// OffscreenCanvas 作为 Transferable 零拷贝传输（传输后主线程引用失效）</span><br/><span class="hl-1">    </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#sendMessage</span><span class="hl-1">(</span><span class="hl-5">MessageType</span><span class="hl-1">.</span><span class="hl-5">Setup</span><span class="hl-1">, </span><span class="hl-5">payload</span><span class="hl-1">, [</span><span class="hl-5">offscreenCanvas</span><span class="hl-1">])</span><br/><span class="hl-1">  } </span><span class="hl-4">catch</span><span class="hl-1"> (</span><span class="hl-5">error</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-3">// Worker 创建失败时降级处理</span><br/><span class="hl-1">    </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#useWorker</span><span class="hl-1"> = </span><span class="hl-6">false</span><br/><span class="hl-1">    </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#worker</span><span class="hl-1"> = </span><span class="hl-6">null</span><br/><span class="hl-1">    </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">onError</span><span class="hl-1">(</span><span class="hl-5">error</span><span class="hl-1">)</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>设计要点</strong>：</p>
+<ul>
+<li><strong>Items 双路径</strong>：<code>ImageBitmap</code> 可以直接通过 <code>Transferable</code> 传输到 Worker（零拷贝），而 URL 字符串不可序列化为 Worker 所需的渲染数据——必须留在主线程异步加载后逐张发送。</li>
+<li><strong>配置裁剪</strong>：<code>onClick</code>、<code>loadMore</code>、<code>onReady</code> 等函数引用不可序列化，只传纯数据配置到 Worker。</li>
+<li><strong>try/catch 降级</strong>：Worker 初始化可能因 CSP 策略、不支持等原因失败。降级后标记 <code>#useWorker = false</code>，通过 <code>onError</code> 通知用户。</li>
+</ul>
+<h3 id="13-为什么选择-offscreencanvas" class="tsd-anchor-link">1.3 为什么选择 OffscreenCanvas<a href="#13-为什么选择-offscreencanvas" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>优势</th>
+<th>劣势</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DOM 操作</td>
+<td>简单直观</td>
+<td>重排重绘代价高，万级元素不可行</td>
+</tr>
+<tr>
+<td>主线程 Canvas</td>
+<td>无 DOM 开销</td>
+<td>渲染仍阻塞主线程</td>
+</tr>
+<tr>
+<td><strong>OffscreenCanvas</strong></td>
+<td><strong>渲染完全不阻塞主线程</strong></td>
+<td>需要 Worker 通信开销</td>
+</tr>
+</tbody>
+</table>
+<p>关键代码：</p>
+<pre><code class="typescript"><span class="hl-3">// src/core/masonry.ts:160</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">offscreenCanvas</span><span class="hl-1"> = </span><span class="hl-5">canvas</span><span class="hl-1">.</span><span class="hl-0">transferControlToOffscreen</span><span class="hl-1">()</span>
+</code><button type="button">Copy</button></pre>
+
+<hr>
+<h2 id="2-设计模式" class="tsd-anchor-link">2. 设计模式<a href="#2-设计模式" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="21-builder-模式" class="tsd-anchor-link">2.1 Builder 模式<a href="#21-builder-模式" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><strong>文件</strong>: <code>src/core/builder.ts</code></p>
+<p>提供链式 API 降低配置复杂度：</p>
+<pre><code class="typescript"><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">masonry</span><span class="hl-1"> = </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">MasonryBuilder</span><span class="hl-1">()</span><br/><span class="hl-1">  .</span><span class="hl-0">withCore</span><span class="hl-1">({ </span><span class="hl-5">canvas</span><span class="hl-1">, </span><span class="hl-5">style:</span><span class="hl-1"> { </span><span class="hl-5">width:</span><span class="hl-1"> </span><span class="hl-9">200</span><span class="hl-1">, </span><span class="hl-5">height:</span><span class="hl-1"> </span><span class="hl-9">300</span><span class="hl-1"> } })</span><br/><span class="hl-1">  .</span><span class="hl-0">withInteraction</span><span class="hl-1">({ </span><span class="hl-0">onClick</span><span class="hl-5">:</span><span class="hl-1"> (</span><span class="hl-5">e</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-5">e</span><span class="hl-1">) })</span><br/><span class="hl-1">  .</span><span class="hl-0">withLoader</span><span class="hl-1">({ </span><span class="hl-5">pageSize:</span><span class="hl-1"> </span><span class="hl-9">20</span><span class="hl-1">, </span><span class="hl-5">loadMore:</span><span class="hl-1"> </span><span class="hl-5">fetchImages</span><span class="hl-1"> })</span><br/><span class="hl-1">  .</span><span class="hl-0">build</span><span class="hl-1">()</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>设计意图</strong>：</p>
+<ul>
+<li>分离配置关注点（core / interaction / loader / placeholder / events）</li>
+<li>每个 <code>with*</code> 方法提供合理默认值</li>
+<li><code>build()</code> 时统一验证，失败则抛出 <code>MasonryError</code></li>
+</ul>
+<h3 id="22-strategy-模式" class="tsd-anchor-link">2.2 Strategy 模式<a href="#22-strategy-模式" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><strong>文件</strong>: <code>src/core/layout/grid-layout.ts</code>, <code>src/core/layout/masonry-layout.ts</code></p>
+<p>统一接口 <code>LayoutStrategy</code>：</p>
+<pre><code class="typescript"><span class="hl-6">interface</span><span class="hl-1"> </span><span class="hl-8">LayoutStrategy</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-0">calculate</span><span class="hl-1">: (</span><span class="hl-5">input</span><span class="hl-1">: </span><span class="hl-8">LayoutInput</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-8">LayoutResult</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Worker 根据配置选择策略：</p>
+<pre><code class="typescript"><span class="hl-3">// src/core/worker/offscreen-canvas.ts:191</span><br/><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#layoutStrategy</span><span class="hl-1"> = </span><span class="hl-5">mode</span><span class="hl-1"> === </span><span class="hl-2">&#39;masonry&#39;</span><span class="hl-1"> ? </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">MasonryLayout</span><span class="hl-1">() : </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">GridLayout</span><span class="hl-1">()</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>扩展新布局</strong>：只需实现 <code>LayoutStrategy</code> 接口，在 Worker 中注册即可。</p>
+<h3 id="23-observer-模式" class="tsd-anchor-link">2.3 Observer 模式<a href="#23-observer-模式" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>项目使用多种观察者/事件机制：</p>
+<table>
+<thead>
+<tr>
+<th>观察者</th>
+<th>用途</th>
+<th>文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ResizeObserver</code></td>
+<td>监听 canvas 容器尺寸变化</td>
+<td><code>src/core/masonry.ts:82</code></td>
+</tr>
+<tr>
+<td><code>matchMedia</code></td>
+<td>监听 DPR 变化（浏览器缩放）</td>
+<td><code>src/core/masonry.ts:296-306</code></td>
+</tr>
+<tr>
+<td><code>Worker.onmessage</code></td>
+<td>接收 Worker 消息</td>
+<td><code>src/core/masonry.ts:161</code></td>
+</tr>
+<tr>
+<td><code>globalThis.onmessage</code></td>
+<td>Worker 内接收主线程消息</td>
+<td><code>src/core/worker/offscreen-canvas.ts:105</code></td>
+</tr>
+<tr>
+<td><code>AbortController</code></td>
+<td>统一管理事件注销</td>
+<td><code>src/core/masonry.ts:100</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="24-queue-模式（串行任务队列）" class="tsd-anchor-link">2.4 Queue 模式（串行任务队列）<a href="#24-queue-模式（串行任务队列）" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><strong>文件</strong>: <code>src/core/masonry.ts:94</code>, <code>src/core/worker/offscreen-canvas.ts:83</code></p>
+<p>异步任务（loadMore、renderLoading）可能并发到达，通过队列保证有序执行：</p>
+<pre><code class="typescript"><span class="hl-3">// src/core/masonry.ts</span><br/><span class="hl-1">#</span><span class="hl-5">queue</span><span class="hl-1"> = </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Queue</span><span class="hl-1">&lt;(() </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-8">void</span><span class="hl-1">) | (() </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-8">Promise</span><span class="hl-1">&lt;</span><span class="hl-8">void</span><span class="hl-1">&gt;)&gt;()</span><br/><br/><span class="hl-5">async</span><span class="hl-1"> #</span><span class="hl-0">runTask</span><span class="hl-1">() {</span><br/><span class="hl-1">  </span><span class="hl-4">if</span><span class="hl-1"> (!</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isRunning</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-4">try</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isRunning</span><span class="hl-1"> = </span><span class="hl-6">true</span><br/><span class="hl-1">      </span><span class="hl-4">while</span><span class="hl-1"> (</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#queue</span><span class="hl-1">.</span><span class="hl-5">size</span><span class="hl-1"> &gt; </span><span class="hl-9">0</span><span class="hl-1">) {</span><br/><span class="hl-1">        </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">task</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#queue</span><span class="hl-1">.</span><span class="hl-0">dequeue</span><span class="hl-1">()</span><br/><span class="hl-1">        </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">task</span><span class="hl-1">?.()</span><br/><span class="hl-1">      }</span><br/><span class="hl-1">    } </span><span class="hl-4">finally</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-3">// try/finally 确保异常安全：即使某个任务抛出错误，</span><br/><span class="hl-1">      </span><span class="hl-3">// #isRunning 也会被重置为 false，不会永久阻塞后续任务入队执行</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isRunning</span><span class="hl-1"> = </span><span class="hl-6">false</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>设计要点</strong>：</p>
+<ul>
+<li><strong><code>try/finally</code> 异常安全</strong>：如果 <code>await task?.()</code> 抛出异常（如 loadMore 网络超时），没有 finally 的话 <code>#isRunning</code> 会永远为 <code>true</code>，后续所有入队的任务都不会被执行——队列被永久&quot;卡死&quot;。<code>finally</code> 确保无论成功还是失败，锁都会被释放。</li>
+<li><strong>防重入设计</strong>：<code>if (!this.#isRunning)</code> 确保同一时刻只有一个消费循环在运行。多次调用 <code>#runTask()</code> 不会启动多个并发消费者——新入队的任务会被当前运行中的 while 循环自动消费。</li>
+<li><strong>有序执行保证</strong>：<code>while (this.#queue.size &gt; 0)</code> 逐个出队执行，配合 <code>await</code> 确保每个异步任务完成后再执行下一个。</li>
+</ul>
+<hr>
+<h2 id="3-关键技术决策" class="tsd-anchor-link">3. 关键技术决策<a href="#3-关键技术决策" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="31-为什么用-imagebitmap-而非-image-元素" class="tsd-anchor-link">3.1 为什么用 ImageBitmap 而非 Image 元素<a href="#31-为什么用-imagebitmap-而非-image-元素" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Image 元素</th>
+<th>ImageBitmap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>绑定到主线程 DOM</td>
+<td>纯数据对象，无 DOM 依赖</td>
+</tr>
+<tr>
+<td>不可跨线程传输</td>
+<td>支持 Transferable 零拷贝传输</td>
+</tr>
+<tr>
+<td>每次 drawImage 需解码</td>
+<td>已预解码，绘制性能更好</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="typescript"><span class="hl-3">// src/core/image-loader.ts:80</span><br/><span class="hl-4">return</span><span class="hl-1"> </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">createImageBitmap</span><span class="hl-1">(</span><span class="hl-5">result</span><span class="hl-1">) </span><span class="hl-3">// blob → 预解码位图</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="32-为什么-worker-格式选择-iife" class="tsd-anchor-link">3.2 为什么 Worker 格式选择 IIFE<a href="#32-为什么-worker-格式选择-iife" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>在 <code>vite.config.ts</code> 中配置 <code>worker.format: 'iife'</code>：</p>
+<ul>
+<li>IIFE 格式兼容性最好，不依赖 ES Module 加载</li>
+<li>打包为单文件，避免 Worker 内的模块解析问题</li>
+<li>部署时无需额外配置 MIME 类型</li>
+</ul>
+<h3 id="33-为什么渲染循环使用-requestanimationframe" class="tsd-anchor-link">3.3 为什么渲染循环使用 requestAnimationFrame<a href="#33-为什么渲染循环使用-requestanimationframe" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<h4 id="完整实现（）" class="tsd-anchor-link">完整实现（<code>#startAnimationLoop</code>）<a href="#完整实现（）" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4>
+<pre><code class="typescript"><span class="hl-3">// src/core/worker/offscreen-canvas.ts</span><br/><span class="hl-1">#</span><span class="hl-5">animationRunning</span><span class="hl-1"> = </span><span class="hl-6">false</span><br/><br/><span class="hl-1">#</span><span class="hl-0">startAnimationLoop</span><span class="hl-1">() {</span><br/><span class="hl-1">  </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#animationRunning</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-4">return</span><span class="hl-1">  </span><span class="hl-3">// 防止重复启动：同一时刻只有一个 rAF 循环在运行</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">  </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#animationRunning</span><span class="hl-1"> = </span><span class="hl-6">true</span><br/><span class="hl-1">  </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-0">renderFrame</span><span class="hl-1"> = () </span><span class="hl-6">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-3">// 步骤 1：处理惯性滚动（每帧衰减速度 + 重新渲染）</span><br/><span class="hl-1">    </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isInertiaActive</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#tickInertia</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#handleRerender</span><span class="hl-1">()</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">    </span><span class="hl-3">// 步骤 2：检查是否仍有 loading 状态的项目</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">loadingItems</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#gridItems</span><span class="hl-1">.</span><span class="hl-0">filter</span><span class="hl-1">((</span><span class="hl-5">item</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-5">item</span><span class="hl-1">.</span><span class="hl-5">status</span><span class="hl-1"> !== </span><span class="hl-2">&#39;loaded&#39;</span><span class="hl-1">)</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">ids</span><span class="hl-1"> = </span><span class="hl-5">loadingItems</span><span class="hl-1">.</span><span class="hl-0">map</span><span class="hl-1">((</span><span class="hl-5">item</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> </span><span class="hl-5">item</span><span class="hl-1">.</span><span class="hl-5">id</span><span class="hl-1">)</span><br/><span class="hl-1">    </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-5">ids</span><span class="hl-1">.</span><span class="hl-5">length</span><span class="hl-1"> &gt; </span><span class="hl-9">0</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-3">// idsChanged 优化：只有 loading 项目集合变化时才发送消息</span><br/><span class="hl-1">      </span><span class="hl-3">// 避免每帧重复发送相同的 RenderLoading 请求</span><br/><span class="hl-1">      </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">idsChanged</span><span class="hl-1"> =</span><br/><span class="hl-1">        </span><span class="hl-5">ids</span><span class="hl-1">.</span><span class="hl-5">length</span><span class="hl-1"> !== </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#lastLoadingIds</span><span class="hl-1">.</span><span class="hl-5">size</span><span class="hl-1"> ||</span><br/><span class="hl-1">        </span><span class="hl-5">ids</span><span class="hl-1">.</span><span class="hl-0">some</span><span class="hl-1">((</span><span class="hl-5">id</span><span class="hl-1">) </span><span class="hl-6">=&gt;</span><span class="hl-1"> !</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#lastLoadingIds</span><span class="hl-1">.</span><span class="hl-0">has</span><span class="hl-1">(</span><span class="hl-5">id</span><span class="hl-1">))</span><br/><span class="hl-1">      </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-5">idsChanged</span><span class="hl-1">) {</span><br/><span class="hl-1">        </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#lastLoadingIds</span><span class="hl-1"> = </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Set</span><span class="hl-1">(</span><span class="hl-5">ids</span><span class="hl-1">)</span><br/><span class="hl-1">        </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#sendMessage</span><span class="hl-1">(</span><span class="hl-5">MessageType</span><span class="hl-1">.</span><span class="hl-5">RenderLoading</span><span class="hl-1">, </span><span class="hl-5">ids</span><span class="hl-1">)</span><br/><span class="hl-1">      }</span><br/><span class="hl-1">    } </span><span class="hl-4">else</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#lastLoadingIds</span><span class="hl-1">.</span><span class="hl-0">clear</span><span class="hl-1">()</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">    </span><span class="hl-3">// 步骤 3：条件退出——没有惯性也没有 loading 项时，停止循环</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">hasWork</span><span class="hl-1"> = </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isInertiaActive</span><span class="hl-1"> || </span><span class="hl-5">ids</span><span class="hl-1">.</span><span class="hl-5">length</span><span class="hl-1"> &gt; </span><span class="hl-9">0</span><br/><span class="hl-1">    </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-5">hasWork</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-0">requestAnimationFrame</span><span class="hl-1">(</span><span class="hl-5">renderFrame</span><span class="hl-1">)</span><br/><span class="hl-1">    } </span><span class="hl-4">else</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#animationRunning</span><span class="hl-1"> = </span><span class="hl-6">false</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">  </span><span class="hl-0">renderFrame</span><span class="hl-1">()  </span><span class="hl-3">// 立即执行第一帧，不等下一个 vsync</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>设计要点</strong>：</p>
+<ul>
+<li><strong><code>idsChanged</code> 优化</strong>：占位符渲染是跨线程异步流程（Worker → Main → render → Main → Worker）。如果每帧都发送 <code>RenderLoading</code> 消息，会在消息通道中积压大量冗余请求。<code>idsChanged</code> 通过 Set 比较确保只在 loading 集合实际变化时才发消息。</li>
+<li><strong>条件退出避免空转</strong>：<code>hasWork</code> 为 false 时直接设置 <code>#animationRunning = false</code> 停止循环。这意味着一旦所有图片加载完且无惯性滚动，rAF 循环彻底停止——零 CPU 消耗。后续滚动或新数据到来时会重新调用 <code>#startAnimationLoop()</code> 启动。</li>
+<li><strong><code>renderFrame()</code> 立即调用</strong>：不是 <code>requestAnimationFrame(renderFrame)</code> 而是直接 <code>renderFrame()</code>。这确保第一帧立即执行，不需要等待下一个 vsync 信号（约 16.7ms 延迟）。</li>
+</ul>
+<h3 id="34-背景层分离（双-canvas）" class="tsd-anchor-link">3.4 背景层分离（双 Canvas）<a href="#34-背景层分离（双-canvas）" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Worker 使用两个 Canvas：<code>#canvas</code>（主画布）+ <code>#backgroundCanvas</code>（背景缓存）</p>
+<pre><code class="typescript"><span class="hl-3">// src/core/worker/offscreen-canvas.ts:66-67</span><br/><span class="hl-1">#</span><span class="hl-5">backgroundCanvas</span><span class="hl-1">!: </span><span class="hl-5">OffscreenCanvas</span><br/><span class="hl-1">#</span><span class="hl-5">canvas</span><span class="hl-1">!: </span><span class="hl-5">OffscreenCanvas</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>原因</strong>：背景（渐变）每帧不变，分离后避免每帧重新计算渐变 stops → 直接 <code>drawImage</code> 拷贝缓存。</p>
+<h4 id="渲染管线完整流程（）" class="tsd-anchor-link">渲染管线完整流程（<code>#handleRerender</code>）<a href="#渲染管线完整流程（）" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4>
+<pre><code class="typescript"><span class="hl-3">// src/core/worker/offscreen-canvas.ts</span><br/><span class="hl-1">#</span><span class="hl-0">handleRerender</span><span class="hl-1">() {</span><br/><span class="hl-1">  </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#context</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-4">try</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 1：清除主画布当前帧内容</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#clear</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 2：清除背景画布（为重绘做准备）</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#clearBackground</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 3：在背景画布上绘制渐变/纯色背景</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#handleRenderBackground</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 4：将背景画布内容拷贝到主画布（drawImage 整块复制）</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#copyBackground</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 5：保存当前变换矩阵状态</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#context</span><span class="hl-1">.</span><span class="hl-0">save</span><span class="hl-1">()</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 6：应用滚动偏移（translate 替代逐 item 坐标计算）</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#context</span><span class="hl-1">.</span><span class="hl-0">translate</span><span class="hl-1">(-</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#scrollX</span><span class="hl-1">, -</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#scrollY</span><span class="hl-1">)</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 7：根据模式选择渲染策略</span><br/><span class="hl-1">      </span><span class="hl-4">if</span><span class="hl-1"> (</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#isLoopActive</span><span class="hl-1">) {</span><br/><span class="hl-1">        </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#renderLoopedItems</span><span class="hl-1">(</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#gridItems</span><span class="hl-1">)    </span><span class="hl-3">// 无缝循环：modulo 映射</span><br/><span class="hl-1">      } </span><span class="hl-4">else</span><span class="hl-1"> {</span><br/><span class="hl-1">        </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#renderGridItems</span><span class="hl-1">(</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#getVisibleItems</span><span class="hl-1">(</span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#gridItems</span><span class="hl-1">))  </span><span class="hl-3">// 普通模式：视口裁剪</span><br/><span class="hl-1">      }</span><br/><span class="hl-1">      </span><span class="hl-3">// 步骤 8：恢复变换矩阵</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-5">#context</span><span class="hl-1">.</span><span class="hl-0">restore</span><span class="hl-1">()</span><br/><span class="hl-1">    } </span><span class="hl-4">catch</span><span class="hl-1"> (</span><span class="hl-5">error</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-6">this</span><span class="hl-1">.</span><span class="hl-0">#sendError</span><span class="hl-1">(</span><span class="hl-5">error</span><span class="hl-1">)</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>设计要点</strong>：</p>
+<ul>
+<li><strong><code>save()/restore()</code> 配对</strong>：<code>translate</code> 改变了坐标系原点，<code>restore()</code> 恢复确保下一帧的背景绘制不受滚动偏移影响。如果忘记 <code>restore()</code>，背景会随滚动移动。</li>
+<li><strong><code>translate(-scrollX, -scrollY)</code> 替代逐 item 偏移</strong>：Canvas 提供矩阵变换 API，一次 <code>translate</code> 比 N 个 item 各减去 scrollX/scrollY 更高效——只设置一次 GPU 状态。</li>
+<li><strong>背景分离的收益</strong>：渐变背景的 <code>createLinearGradient</code> + <code>addColorStop</code> 调用在像素量大时开销可观。分离到 <code>#backgroundCanvas</code> 后，只有 resize/DPR 变化时才重新生成渐变；每帧只需 <code>drawImage</code> 一次整块复制（GPU 优化路径）。</li>
+<li><strong>try/catch 错误边界</strong>：<code>#sendError</code> 将异常传回主线程的 <code>onError</code> 回调，不让渲染异常导致 Worker 崩溃。</li>
+</ul>
+<hr>
+<h2 id="4-模块依赖关系" class="tsd-anchor-link">4. 模块依赖关系<a href="#4-模块依赖关系" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-5">index</span><span class="hl-1">.</span><span class="hl-5">ts</span><br/><span class="hl-1">  └── </span><span class="hl-5">core</span><span class="hl-1">/</span><span class="hl-5">builder</span><span class="hl-1">.</span><span class="hl-5">ts</span><br/><span class="hl-1">        └── </span><span class="hl-5">core</span><span class="hl-1">/</span><span class="hl-5">masonry</span><span class="hl-1">.</span><span class="hl-0">ts</span><span class="hl-1"> (</span><span class="hl-5">主编排器</span><span class="hl-1">)</span><br/><span class="hl-1">              ├── </span><span class="hl-5">core</span><span class="hl-1">/</span><span class="hl-5">image</span><span class="hl-1">-</span><span class="hl-5">loader</span><span class="hl-1">.</span><span class="hl-5">ts</span><br/><span class="hl-1">              ├── </span><span class="hl-5">core</span><span class="hl-1">/</span><span class="hl-5">placeholder</span><span class="hl-3">/*</span><br/><span class="hl-3">              ├── helper/validator.ts + core/rules.ts</span><br/><span class="hl-3">              └── core/worker/offscreen-canvas.ts (Worker 入口)</span><br/><span class="hl-3">                    ├── core/layout/grid-layout.ts</span><br/><span class="hl-3">                    ├── core/layout/masonry-layout.ts</span><br/><span class="hl-3">                    ├── core/worker/protocol.ts</span><br/><span class="hl-3">                    └── helper/background.ts</span>
+</code><button>Copy</button></pre>
+
+<hr>
+<h2 id="5-性能设计总结" class="tsd-anchor-link">5. 性能设计总结<a href="#5-性能设计总结" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Worker 离屏渲染</td>
+<td>主线程零渲染阻塞</td>
+</tr>
+<tr>
+<td>ImageBitmap Transferable</td>
+<td>零拷贝图片传输</td>
+</tr>
+<tr>
+<td>视口裁剪</td>
+<td>万级元素只渲染几十个</td>
+</tr>
+<tr>
+<td>背景层缓存</td>
+<td>避免每帧重新计算渐变</td>
+</tr>
+<tr>
+<td>惯性停止阈值</td>
+<td>速度 &lt; 0.5px 时停止动画循环</td>
+</tr>
+<tr>
+<td>条件 rAF</td>
+<td>无工作时不空转</td>
+</tr>
+<tr>
+<td>debounce resize</td>
+<td>防止高频 resize 消息</td>
+</tr>
+<tr>
+<td>p-limit 并发控制</td>
+<td>避免同时发起过多网络请求</td>
+</tr>
+</tbody>
+</table>
+</div></div><div class="col-sidebar"><div class="page-menu"><div class="tsd-navigation settings"><details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg><h3>Settings</h3></summary><div class="tsd-accordion-details"><div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span><ul id="tsd-filter-options"><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div><div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div><details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg><h3>On This Page</h3></summary><div class="tsd-accordion-details"><a href="#整体架构与设计模式"><span>整体架构与设计模式</span></a><ul><li><a href="#模块定位"><span>模块定位</span></a></li><li><a href="#1-双线程模型"><span>1. 双线程模型</span></a></li><li><ul><li><a href="#11-为什么需要双线程"><span>1.1 为什么需要双线程</span></a></li><li><a href="#12-线程间通信"><span>1.2 线程间通信</span></a></li><li><a href="#13-为什么选择-offscreencanvas"><span>1.3 为什么选择 <wbr/>Offscreen<wbr/>Canvas</span></a></li></ul></li><li><a href="#2-设计模式"><span>2. 设计模式</span></a></li><li><ul><li><a href="#21-builder-模式"><span>2.1 <wbr/>Builder 模式</span></a></li><li><a href="#22-strategy-模式"><span>2.2 <wbr/>Strategy 模式</span></a></li><li><a href="#23-observer-模式"><span>2.3 <wbr/>Observer 模式</span></a></li><li><a href="#24-queue-模式（串行任务队列）"><span>2.4 <wbr/>Queue 模式（串行任务队列）</span></a></li></ul></li><li><a href="#3-关键技术决策"><span>3. 关键技术决策</span></a></li><li><ul><li><a href="#31-为什么用-imagebitmap-而非-image-元素"><span>3.1 为什么用 <wbr/>Image<wbr/>Bitmap 而非 <wbr/>Image 元素</span></a></li><li><a href="#32-为什么-worker-格式选择-iife"><span>3.2 为什么 <wbr/>Worker 格式选择 <wbr/>IIFE</span></a></li><li><a href="#33-为什么渲染循环使用-requestanimationframe"><span>3.3 为什么渲染循环使用 request<wbr/>Animation<wbr/>Frame</span></a></li><li><ul><li><a href="#完整实现（）"><span>完整实现（）</span></a></li></ul></li><li><a href="#34-背景层分离（双-canvas）"><span>3.4 背景层分离（双 <wbr/>Canvas）</span></a></li><li><ul><li><a href="#渲染管线完整流程（）"><span>渲染管线完整流程（）</span></a></li></ul></li></ul></li><li><a href="#4-模块依赖关系"><span>4. 模块依赖关系</span></a></li><li><a href="#5-性能设计总结"><span>5. 性能设计总结</span></a></li></ul></div></details></div><div class="site-menu"><nav class="tsd-navigation"><a href="../modules.html">@supuwoerc/masonry</a><ul class="tsd-small-nested-navigation" id="tsd-nav-container"><li>Loading...</li></ul></nav></div></div></div><footer><p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer><div class="overlay"></div></body></html>
