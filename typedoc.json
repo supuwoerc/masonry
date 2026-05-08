@@ -3,5 +3,7 @@
   "entryPointStrategy": "expand",
   "out": "docs",
   "exclude": ["**/*.test.ts", "**/test/**", "src/vite-env.d.ts"],
-  "projectDocuments": ["./src/roadmap/**/*.md"]
+  "projectDocuments": ["./src/roadmap/**/*.md"],
+  "plugin": ["typedoc-material-theme"],
+  "themeColor": "#cb9820"
 }

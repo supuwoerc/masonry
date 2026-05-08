@@ -43,7 +43,8 @@
     "nanoid": "^5.1.9",
     "p-limit": "^7.3.0",
     "path2d-polyfill": "^3.2.1",
-    "stats.js": "^0.17.0"
+    "stats.js": "^0.17.0",
+    "typedoc-material-theme": "^1.4.1"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",
