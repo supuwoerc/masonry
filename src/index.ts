@@ -10,6 +10,26 @@
 export { MasonryBuilder } from '@/core/builder'
 export { MasonryError } from '@/core/error'
 export { Masonry } from '@/core/masonry'
+export type { MasonryConfiguration } from '@/core/masonry'
 export { BreathingPlaceholderRenderer } from '@/core/placeholder/breathing-placeholder'
+export type { BreathingOptions } from '@/core/placeholder/breathing-placeholder'
 export { SpinPlaceholderRenderer } from '@/core/placeholder/spin-placeholder'
+export type { PlaceholderOptions } from '@/core/placeholder/spin-placeholder'
+export type {
+  ClickEvent,
+  ColorStop,
+  Core,
+  GradientBackground,
+  GridItemStyle,
+  ImageFetcher,
+  ImageLoadConfig,
+  Interaction,
+  ItemDescriptor,
+  LayoutMode,
+  LayoutUpdateEvent,
+  LoadMoreConfig,
+  PlaceholderRenderer,
+  ScrollConfig,
+} from '@/core/types'
+export type { GridItem } from '@/core/worker/protocol'
 export { StatsMonitor } from '@/helper/stats-monitor'

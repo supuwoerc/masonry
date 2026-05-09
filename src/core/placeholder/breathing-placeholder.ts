@@ -20,7 +20,7 @@ interface AnimationState {
  * 呼吸占位符选项
  * Breathing placeholder options
  */
-interface BreathingOptions {
+export interface BreathingOptions {
   /**
    * 底色（支持纯色或渐变）
    * Background color (supports solid color or gradient)

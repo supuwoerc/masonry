@@ -20,7 +20,7 @@ interface AnimationState {
  * 占位符渲染器选项
  * Placeholder renderer options
  */
-interface PlaceholderOptions {
+export interface PlaceholderOptions {
   /** 背景颜色或渐变配置 | Background color or gradient configuration */
   backgroundColor?: string | GradientBackground
 }
