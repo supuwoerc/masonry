@@ -35,7 +35,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest --coverage",
     "prepare": "husky",
-    "doc": "typedoc --options typedoc.json"
+    "doc": "typedoc --options typedoc.json",
+    "doc:preview": "pnpm dlx serve docs"
   },
   "dependencies": {
     "@supuwoerc/toolkit": "^1.0.1",
